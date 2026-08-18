@@ -10,8 +10,11 @@ I am building this to LEARN, not only to ship.
 - No MappedByteBuffer, no RandomAccessFile.
 
 ## Working agreement
-- Do NOT write or edit code under src/main/java/dev/bplus/tree/ unless I explicitly
-  say "write the tree code". In that package, explain concepts and review my code.
+- Do NOT write or edit code unless I explicitly say.
 - When I ask you to teach, do not write code — prose and worked examples only.
 - Run `mvn -q test` before claiming any task is done.
 - Small commits, each with a passing build.
+- After a feature is complete and green, write its design doc in docs/design/NN-feature.md.
+  Follow docs/design/README.md: what the feature is and how it works, byte layout, a worked
+  example with real bytes. Not a walkthrough of the code.
+- Write docs in my voice: plain, short sentences, no flourishes. Say "I" where I made a choice.
