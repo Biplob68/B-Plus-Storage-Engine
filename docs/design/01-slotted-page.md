@@ -1,7 +1,5 @@
 # 1. SlottedPage
 
-**Status:** Done · **Package:** `database.engine.bplus.page` · **Tests:** 18 passing
-
 ## What it is
 
 A 4 KB block of bytes that stores many key/value pairs in sorted order, and lets me binary search
