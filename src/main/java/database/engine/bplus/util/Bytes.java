@@ -81,6 +81,34 @@ public final class Bytes {
         throw new IllegalStateException("malformed varint at " + index + ": no terminating byte");
     }
 
+    /**
+     * Big-endian 4-byte form of {@code value}. An internal page stores a child page id this way,
+     * as the value of a cell.
+     */
+    public static byte[] encodeInt(int value) {
+        return new byte[]{
+                (byte) (value >>> 24),
+                (byte) (value >>> 16),
+                (byte) (value >>> 8),
+                (byte) value
+        };
+    }
+
+    /**
+     * Reads back what {@link #encodeInt} wrote. Page ids are unsigned, so the whole 32-bit range
+     * round trips, including values that come back as a negative int.
+     */
+    public static int decodeInt(byte[] bytes) {
+        Objects.requireNonNull(bytes, "bytes");
+        if (bytes.length != 4) {
+            throw new IllegalArgumentException("expected 4 bytes, got " + bytes.length);
+        }
+        return ((bytes[0] & 0xFF) << 24)
+                | ((bytes[1] & 0xFF) << 16)
+                | ((bytes[2] & 0xFF) << 8)
+                | (bytes[3] & 0xFF);
+    }
+
     private static void requireNonNegative(int value) {
         if (value < 0) {
             throw new IllegalArgumentException("varints encode non-negative values only, got " + value);

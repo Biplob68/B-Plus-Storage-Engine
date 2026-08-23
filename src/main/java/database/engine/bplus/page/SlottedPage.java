@@ -27,7 +27,9 @@ public final class SlottedPage {
 
     public static final int USABLE_BYTES = Page.SIZE - PageHeader.SIZE;
 
-    public static final int MAX_CELL_SIZE = USABLE_BYTES / 4 - SlotDirectory.SLOT_SIZE;
+    public static final int SLOT_SIZE = SlotDirectory.SLOT_SIZE;
+
+    public static final int MAX_CELL_SIZE = USABLE_BYTES / 4 - SLOT_SIZE;
 
     private static final byte[] EMPTY_PAGE = new byte[Page.SIZE];
 
@@ -43,7 +45,9 @@ public final class SlottedPage {
 
     // ------------------------- lifecycle -------------------------------------------
 
-    /** Formats {@code buffer} as an empty page, zeroing it so a recycled frame leaks no old bytes. */
+    /**
+     * Formats {@code buffer} as an empty page, zeroing it so a recycled frame leaks no old bytes.
+     */
     public static SlottedPage init(ByteBuffer buffer, PageType type) {
         Objects.requireNonNull(type, "type");
         ByteBuffer pageBuffer = pageView(buffer);
@@ -55,7 +59,9 @@ public final class SlottedPage {
         return page;
     }
 
-    /** Opens a buffer that already holds a formatted page, leaving its bytes untouched. */
+    /**
+     * Opens a buffer that already holds a formatted page, leaving its bytes untouched.
+     */
     public static SlottedPage wrap(ByteBuffer buffer) {
         SlottedPage page = new SlottedPage(pageView(buffer));
         page.type(); // fail fast when this is not a formatted page
@@ -84,7 +90,9 @@ public final class SlottedPage {
         return slots.size();
     }
 
-    /** Next leaf in key order, or {@link Page#NO_PAGE}.*/
+    /**
+     * Next leaf in key order, or {@link Page#NO_PAGE}.
+     */
     public int rightSibling() {
         return header.rightSibling();
     }
@@ -93,12 +101,16 @@ public final class SlottedPage {
         header.rightSibling(pageId);
     }
 
-    /** Reclaimable bytes: the gap plus dead bytes. */
+    /**
+     * Reclaimable bytes: the gap plus dead bytes.
+     */
     public int freeSpace() {
         return contiguousFreeSpace() + header.fragmentedBytes();
     }
 
-    /** The single run of free bytes between the slot array and the cell area. */
+    /**
+     * The single run of free bytes between the slot array and the cell area.
+     */
     private int contiguousFreeSpace() {
         return header.cellAreaStart() - slots.endOffset();
     }
@@ -140,18 +152,20 @@ public final class SlottedPage {
         return CellCodec.size(keyLength, valueLength);
     }
 
-    /** Whether the pair fits, compacting first if need be. False also means "too big to ever fit". */
+    /**
+     * Whether the pair fits, compacting first if need be. False also means "too big to ever fit".
+     */
     public boolean hasSpaceFor(int keyLength, int valueLength) {
         if (keyLength < 0 || valueLength < 0) {
             throw new IllegalArgumentException("negative length: " + keyLength + "/" + valueLength);
         }
         int cellBytes = CellCodec.size(keyLength, valueLength);
-        return cellBytes <= MAX_CELL_SIZE && cellBytes + SlotDirectory.SLOT_SIZE <= freeSpace();
+        return cellBytes <= MAX_CELL_SIZE && cellBytes + SLOT_SIZE <= freeSpace();
     }
 
     /**
      * Inserts the pair at {@code slotIndex}.
-    */
+     */
     public void insertCell(int slotIndex, byte[] key, byte[] value) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
@@ -164,7 +178,7 @@ public final class SlottedPage {
             throw new IllegalArgumentException("cell of " + cellBytes + " bytes exceeds MAX_CELL_SIZE "
                     + MAX_CELL_SIZE + "; needs an overflow page");
         }
-        int requiredBytes = cellBytes + SlotDirectory.SLOT_SIZE;
+        int requiredBytes = cellBytes + SLOT_SIZE;
         if (requiredBytes > freeSpace()) {
             throw new IllegalStateException("page full: need " + requiredBytes + " bytes, have " + freeSpace());
         }
@@ -236,7 +250,9 @@ public final class SlottedPage {
         header.fragmentedBytes(0);
     }
 
-    /** Negative when the key stored in {@code slotIndex} sorts before {@code key}. */
+    /**
+     * Negative when the key stored in {@code slotIndex} sorts before {@code key}.
+     */
     private int compareStoredKey(int slotIndex, byte[] key) {
         return CellCodec.compareKey(buffer, slots.cellOffset(slotIndex), key);
     }

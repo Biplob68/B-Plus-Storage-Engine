@@ -13,15 +13,15 @@ class BytesTest {
     @Test
     void compareTreatsBytesAsUnsigned() {
         // 0x80 is -128 signed; unsigned it must sort above 0x7F
-        assertThat(Bytes.compare(new byte[] {(byte) 0x80}, new byte[] {0x7F})).isPositive();
-        assertThat(Bytes.compare(new byte[] {(byte) 0xFF}, new byte[] {0x00})).isPositive();
+        assertThat(Bytes.compare(new byte[]{(byte) 0x80}, new byte[]{0x7F})).isPositive();
+        assertThat(Bytes.compare(new byte[]{(byte) 0xFF}, new byte[]{0x00})).isPositive();
     }
 
     @Test
     void shorterPrefixSortsFirst() {
-        assertThat(Bytes.compare(new byte[] {1, 2}, new byte[] {1, 2, 0})).isNegative();
-        assertThat(Bytes.compare(new byte[] {}, new byte[] {0})).isNegative();
-        assertThat(Bytes.compare(new byte[] {1, 2}, new byte[] {1, 2})).isZero();
+        assertThat(Bytes.compare(new byte[]{1, 2}, new byte[]{1, 2, 0})).isNegative();
+        assertThat(Bytes.compare(new byte[]{}, new byte[]{0})).isNegative();
+        assertThat(Bytes.compare(new byte[]{1, 2}, new byte[]{1, 2})).isZero();
     }
 
     @Test
@@ -31,9 +31,9 @@ class BytesTest {
         buf.put(5, stored);
 
         assertThat(Bytes.compare(buf, 5, stored.length, stored)).isZero();
-        assertThat(Bytes.compare(buf, 5, stored.length, new byte[] {0x7F})).isPositive();
-        assertThat(Bytes.compare(buf, 5, stored.length, new byte[] {(byte) 0x80, 0x01, 0x02, 0x00})).isNegative();
-        assertThat(Bytes.compare(buf, 5, 0, new byte[] {})).isZero();
+        assertThat(Bytes.compare(buf, 5, stored.length, new byte[]{0x7F})).isPositive();
+        assertThat(Bytes.compare(buf, 5, stored.length, new byte[]{(byte) 0x80, 0x01, 0x02, 0x00})).isNegative();
+        assertThat(Bytes.compare(buf, 5, 0, new byte[]{})).isZero();
     }
 
     @Test
@@ -92,5 +92,27 @@ class BytesTest {
             buf.put(i, (byte) 0xFF); // continuation bit set forever
         }
         assertThatThrownBy(() -> Bytes.getVarInt(buf, 0)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void intEncodingIsBigEndian() {
+        assertThat(Bytes.encodeInt(0x01020304)).containsExactly(0x01, 0x02, 0x03, 0x04);
+        assertThat(Bytes.encodeInt(0)).containsExactly(0, 0, 0, 0);
+    }
+
+    @Test
+    void intRoundTripsOverTheWholeRange() {
+        int[] values = {0, 1, 255, 256, 65_535, 65_536, Integer.MAX_VALUE, Integer.MIN_VALUE, -1, 4096};
+        for (int value : values) {
+            assertThat(Bytes.decodeInt(Bytes.encodeInt(value)))
+                    .as("round trip of %d", value)
+                    .isEqualTo(value);
+        }
+    }
+
+    @Test
+    void decodeIntRejectsWrongLength() {
+        assertThatThrownBy(() -> Bytes.decodeInt(new byte[3])).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Bytes.decodeInt(new byte[5])).isInstanceOf(IllegalArgumentException.class);
     }
 }
