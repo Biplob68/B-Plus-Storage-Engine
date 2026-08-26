@@ -245,6 +245,22 @@ And this always holds:
 It may compact on its own first. The caller cannot see fragmentation and does not need to think
 about it.
 
+## Classes
+
+Four classes own the byte layout, one part each. Two more hold constants.
+
+| Class | Owns |
+|---|---|
+| `PageHeader` | The header fields. The only file with header offsets in it |
+| `SlotDirectory` | The slot array: read, write, shift, and its own length |
+| `CellCodec` | The cell format. Static, because a cell is a layout, not an object |
+| `SlottedPage` | Search, placement, free space |
+| `Page` | `SIZE` and `NO_PAGE`. The only place the page size is written down |
+| `PageType` | LEAF or INTERNAL, and the byte each one is stored as |
+
+`SlotDirectory` owns `cellCount`, even though the number sits in the header. So `insert` and
+`remove` shift the slots and update the count in one step.
+
 ## Limits and errors
 
 | | |
@@ -257,38 +273,6 @@ about it.
 | Slot index out of range | `IndexOutOfBoundsException` |
 
 A duplicate key is rejected, not overwritten. An update is a delete plus an insert.
-
-## Classes
-
-Four classes. Each one owns a different part of the byte layout.
-
-| Class | Owns |
-|---|---|
-| `PageHeader` | The header fields. The only file with header offsets in it |
-| `SlotDirectory` | The slot array: read, write, shift, and its own length |
-| `CellCodec` | The cell format. Static, because a cell is a layout, not an object |
-| `SlottedPage` | Search, placement, free space |
-
-`SlotDirectory` owns `cellCount`, even though the number sits in the header. So `insert` and
-`remove` shift the slots and update the count in one step.
-
-## Tests
-
-`SlottedPageTest` (10) and `BytesTest` (8). Two of them do most of the work.
-
-**Fill, delete every second cell, compact, read back.** Inserts come in shuffled order, so slots
-shift in the middle instead of only appending. It checks that free space after the deletes equals
-the sum of the deleted cell sizes, that `compact()` does not change `freeSpace()`, and that the
-space really is usable again.
-
-**200 random operations against a `TreeMap`** with an `Arrays.compareUnsigned` comparator. It mixes
-insert, update (delete plus insert) and delete, and compacts every 50 operations. `cellCount` is
-compared with the model after every operation, and the full key/value list is compared at the end.
-Seed is `20260815`, so a failure can be reproduced.
-
-The rest cover `binarySearch` insertion points, sort order and duplicate rejection, empty keys and
-values, the biggest allowed cell fitting exactly 4 times, `wrap` reading back a page through
-another buffer view, and `init` not touching the caller's position and limit.
 
 ## What is missing
 
