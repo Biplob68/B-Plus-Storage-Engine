@@ -4,14 +4,11 @@ import database.engine.bplus.page.PageType;
 import database.engine.bplus.page.SlottedPage;
 import org.junit.jupiter.api.Test;
 
+import static database.engine.bplus.tree.TreeFixture.key;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class InternalNodeTest {
-
-    private static byte[] key(int i) {
-        return new byte[] {(byte) (i >>> 24), (byte) (i >>> 16), (byte) (i >>> 8), (byte) i};
-    }
 
     private static InternalNode newNode(HeapPageStore store) {
         return new InternalNode(store.get(store.allocate(PageType.INTERNAL)));

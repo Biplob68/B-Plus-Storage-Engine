@@ -20,7 +20,7 @@ import java.util.Objects;
  */
 final class InternalNode {
 
-    /** The leftmost child's key. Empty, so it sorts before every real separator. */
+
     private static final byte[] LEFTMOST_KEY = new byte[0];
 
     private static final int CHILD_ID_BYTES = 4;
@@ -35,11 +35,6 @@ final class InternalNode {
         this.page = page;
     }
 
-    SlottedPage page() {
-        return page;
-    }
-
-    /** Number of children, which is the number of slots. */
     int childCount() {
         return page.cellCount();
     }
@@ -48,16 +43,11 @@ final class InternalNode {
         return Bytes.decodeInt(page.value(slotIndex));
     }
 
-    /** The separator in {@code slotIndex}. Slot 0 is the leftmost child, so its key is empty. */
     byte[] separatorAt(int slotIndex) {
         return page.key(slotIndex);
     }
 
-    /**
-     * The slot whose subtree {@code key} belongs to: the last separator that is not greater than
-     * the key.
-     */
-    int findChildSlot(byte[] key) {
+    private int findChildSlot(byte[] key) {
         Objects.requireNonNull(key, "key");
         if (page.cellCount() == 0) {
             throw new IllegalStateException("internal page has no children");
@@ -70,14 +60,11 @@ final class InternalNode {
         return slotIndex;
     }
 
-    /** The child page id {@code key} belongs to. */
+
     int findChild(byte[] key) {
         return childAt(findChildSlot(key));
     }
 
-    /**
-     * Writes the leftmost child, replacing the current one if there is one.
-     */
     void setLeftmostChild(int childPageId) {
         if (hasLeftmostChild()) {
             page.deleteCell(0); // insertCell rejects a duplicate key, so the old one goes first
@@ -89,13 +76,7 @@ final class InternalNode {
         return page.cellCount() > 0 && page.key(0).length == 0;
     }
 
-    /**
-     * Adds one separator and the child on its right.
-     *
-     * <p>The key must not be empty. That is the leftmost child's key, and there is only ever one.
-     * A separator cell is {@code varIntSize(keyLength) + 1 + keyLength + 4} bytes, so the longest
-     * key I can promote is about 1009 bytes until overflow pages exist.
-     */
+
     void insertSeparator(byte[] key, int childPageId) {
         Objects.requireNonNull(key, "key");
         if (key.length == 0) {

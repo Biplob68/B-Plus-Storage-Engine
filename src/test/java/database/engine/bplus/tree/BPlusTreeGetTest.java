@@ -4,39 +4,17 @@ import database.engine.bplus.page.PageType;
 import database.engine.bplus.page.SlottedPage;
 import org.junit.jupiter.api.Test;
 
+import static database.engine.bplus.tree.TreeFixture.addSeparator;
+import static database.engine.bplus.tree.TreeFixture.chain;
+import static database.engine.bplus.tree.TreeFixture.internalOf;
+import static database.engine.bplus.tree.TreeFixture.key;
+import static database.engine.bplus.tree.TreeFixture.leafOf;
+import static database.engine.bplus.tree.TreeFixture.value;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 class BPlusTreeGetTest {
-
-
-    private static byte[] key(int i) {
-        return new byte[]{(byte) (i >>> 24), (byte) (i >>> 16), (byte) (i >>> 8), (byte) i};
-    }
-
-    private static byte[] value(int i) {
-        return new byte[]{(byte) i, (byte) 0xAA};
-    }
-
-    /**
-     * A leaf holding the given keys, returned as its page id.
-     */
-    private static int leafOf(HeapPageStore store, int... keys) {
-        int pageId = store.allocate(PageType.LEAF);
-        SlottedPage leaf = store.get(pageId);
-        for (int i = 0; i < keys.length; i++) {
-            leaf.insertCell(i, key(keys[i]), value(keys[i]));
-        }
-        store.release(pageId);
-        return pageId;
-    }
-
-    private static void chain(HeapPageStore store, int leftId, int rightId) {
-        SlottedPage left = store.get(leftId);
-        left.setRightSibling(rightId);
-        store.release(leftId);
-    }
 
     @Test
     void emptyTreeFindsNothing() {
@@ -73,8 +51,8 @@ class BPlusTreeGetTest {
 
     /**
      * <pre>
-     *            root:  leftmost -> A,  30 -> B,  50 -> C
-     *            A [10 20] -> B [30 40] -> C [50 60]
+     *   root:  leftmost -> A,  30 -> B,  50 -> C
+     *   A [10 20] -> B [30 40] -> C [50 60]
      * </pre>
      */
     @Test
@@ -86,12 +64,9 @@ class BPlusTreeGetTest {
         chain(store, a, b);
         chain(store, b, c);
 
-        int rootId = store.allocate(PageType.INTERNAL);
-        InternalNode root = new InternalNode(store.get(rootId));
-        root.setLeftmostChild(a);
-        root.insertSeparator(key(30), b);
-        root.insertSeparator(key(50), c);
-        store.release(rootId);
+        int rootId = internalOf(store, a);
+        addSeparator(store, rootId, 30, b);
+        addSeparator(store, rootId, 50, c);
 
         BPlusTree tree = BPlusTree.open(store, rootId);
 
@@ -106,9 +81,9 @@ class BPlusTreeGetTest {
 
     /**
      * <pre>
-     *            root:      leftmost -> L,  50 -> R
-     *            L:         leftmost -> A,  30 -> B
-     *            R:         leftmost -> C,  70 -> D
+     *   root:  leftmost -> L,  50 -> R
+     *   L:     leftmost -> A,  30 -> B
+     *   R:     leftmost -> C,  70 -> D
      * </pre>
      */
     @Test
@@ -119,23 +94,14 @@ class BPlusTreeGetTest {
         int c = leafOf(store, 50, 60);
         int d = leafOf(store, 70, 80);
 
-        int leftId = store.allocate(PageType.INTERNAL);
-        InternalNode left = new InternalNode(store.get(leftId));
-        left.setLeftmostChild(a);
-        left.insertSeparator(key(30), b);
-        store.release(leftId);
+        int leftId = internalOf(store, a);
+        addSeparator(store, leftId, 30, b);
 
-        int rightId = store.allocate(PageType.INTERNAL);
-        InternalNode right = new InternalNode(store.get(rightId));
-        right.setLeftmostChild(c);
-        right.insertSeparator(key(70), d);
-        store.release(rightId);
+        int rightId = internalOf(store, c);
+        addSeparator(store, rightId, 70, d);
 
-        int rootId = store.allocate(PageType.INTERNAL);
-        InternalNode root = new InternalNode(store.get(rootId));
-        root.setLeftmostChild(leftId);
-        root.insertSeparator(key(50), rightId);
-        store.release(rootId);
+        int rootId = internalOf(store, leftId);
+        addSeparator(store, rootId, 50, rightId);
 
         BPlusTree tree = BPlusTree.open(store, rootId);
 
