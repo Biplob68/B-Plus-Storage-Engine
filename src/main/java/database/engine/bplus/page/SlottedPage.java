@@ -152,6 +152,11 @@ public final class SlottedPage {
         return CellCodec.size(keyLength, valueLength);
     }
 
+    /** Bytes one entry costs a page: its cell plus its slot. */
+    public static int entrySize(int keyLength, int valueLength) {
+        return cellSize(keyLength, valueLength) + SLOT_SIZE;
+    }
+
     /**
      * Whether the pair fits, compacting first if need be. False also means "too big to ever fit".
      */

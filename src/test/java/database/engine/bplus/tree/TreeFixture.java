@@ -3,7 +3,9 @@ package database.engine.bplus.tree;
 import database.engine.bplus.page.PageType;
 import database.engine.bplus.page.SlottedPage;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /** Builders shared by the tree tests, so no test has to know how a page is laid out. */
 final class TreeFixture {
@@ -50,6 +52,37 @@ final class TreeFixture {
         InternalNode node = new InternalNode(store.get(internalPageId));
         node.insertSeparator(key(separator), childPageId);
         store.release(internalPageId);
+    }
+
+    static List<byte[]> keysOf(PageStore store, int pageId) {
+        SlottedPage page = store.get(pageId);
+        try {
+            List<byte[]> keys = new ArrayList<>(page.cellCount());
+            for (int i = 0; i < page.cellCount(); i++) {
+                keys.add(page.key(i));
+            }
+            return keys;
+        } finally {
+            store.release(pageId);
+        }
+    }
+
+    static int cellCountOf(PageStore store, int pageId) {
+        SlottedPage page = store.get(pageId);
+        try {
+            return page.cellCount();
+        } finally {
+            store.release(pageId);
+        }
+    }
+
+    static int rightSiblingOf(PageStore store, int pageId) {
+        SlottedPage page = store.get(pageId);
+        try {
+            return page.rightSibling();
+        } finally {
+            store.release(pageId);
+        }
     }
 
     static void chain(PageStore store, int leftLeafId, int rightLeafId) {

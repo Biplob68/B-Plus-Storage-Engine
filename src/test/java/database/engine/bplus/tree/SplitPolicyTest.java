@@ -104,7 +104,7 @@ class SplitPolicyTest {
         int capacity = SlottedPage.USABLE_BYTES;
 
         for (int valueLength = 0; valueLength <= 900; valueLength += 37) {
-            int entry = BPlusTree.entrySize(8, valueLength);
+            int entry = SlottedPage.entrySize(8, valueLength);
             int count = capacity / entry + 1; // one more than the page can hold
             if (count < 2) {
                 continue;

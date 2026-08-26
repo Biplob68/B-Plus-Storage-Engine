@@ -182,6 +182,54 @@ When both fail it means the entries need more than two pages, and that is a thro
 Capacity is an argument rather than `SlottedPage.USABLE_BYTES`, so the class is a pure function and
 the tests can use a capacity of 100 with two-digit sizes.
 
+### Splitting a full leaf
+
+`LeafSplit` turns one leaf into two and reports the key the parent will need.
+
+I read every entry out first, put the new one in its sorted place, and rebuild both pages from that
+list:
+
+```
+1. read all entries out of L, and insert the new pair at its sorted position
+2. ask SplitPolicy where to cut               nothing mutated yet
+3. allocate R                                 can fail, still nothing mutated
+4. fill R from the right half
+5. empty L, refill it from the left half
+6. R.rightSibling = L's old value, then L.rightSibling = R
+7. separator = the first key of the right half
+```
+
+Rebuilding L rather than trimming it drops two steps a move-in-place version needs. There is no
+highest-index-first delete loop, because emptying a page is order-independent. And there is no
+`compact()`, because deleting the last cell resets `cellAreaStart` to `Page.SIZE`, so an emptied
+page is already clean. Splits are rare enough that the extra copying does not matter.
+
+Two orderings are load-bearing.
+
+**Allocate before mutating.** Step 3 comes before step 4. Allocation can fail, and it has to fail
+while the leaf is still whole.
+
+**Read the old sibling before overwriting it.** Reversed, the new leaf ends up pointing at itself
+and a scan never ends. It lives in a two-line method so the read and the write cannot drift apart:
+
+```
+right.setRightSibling(leaf.rightSibling());   // L's OLD value
+leaf.setRightSibling(rightPageId);
+```
+
+**The separator is copied, not moved.** It comes from the entry at the cut, and that same entry is
+also written into R. Leaf keys are data, so moving one up would delete a record.
+
+```
+before   L [ 20 40 60 80 ]  full,  insert 50
+
+after    L [ 20 40 50 ]  ->  R [ 60 80 ]
+         separator 60,  and 60 is still a record in R
+```
+
+The key must not already be in the leaf. A replace that does not fit is a different path, and `put`
+settles duplicates before it gets here.
+
 ## Classes
 
 | Class | Owns | Where |
@@ -189,6 +237,8 @@ the tests can use a capacity of 100 with two-digit sizes.
 | `PageStore` | Where pages come from | main |
 | `InternalNode` | The internal page format: separators, children, routing | main |
 | `SplitPolicy` | Where to cut a page. Pure arithmetic | main |
+| `LeafSplit` | Turning one full leaf into two | main |
+| `SplitResult` | The separator and new page a split hands upward | main |
 | `BPlusTree` | Descent, get, put | main |
 | `HeapPageStore` | An in-memory `PageStore` | test |
 | `TreeInvariants` | Checks the tree is still a tree | test |
@@ -212,7 +262,7 @@ under it.
 
 | Missing | What it costs |
 |---|---|
-| Splitting is not wired up | A full leaf throws. `SplitPolicy` is written and tested but nothing calls it yet |
+| Splitting is not wired up | A full leaf still throws from `put`. `LeafSplit` works and is tested directly, but a fresh tree is a single leaf, so its first split is a root split and there is no parent to take the separator until the root can grow |
 | Delete | Not in this milestone |
 | Overflow pages | A pair over 1016 bytes is rejected |
 | A meta page | The root page id lives in a field, not on disk |

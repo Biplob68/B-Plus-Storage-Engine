@@ -70,8 +70,8 @@ public final class BPlusTree {
 
 
     private static void replace(SlottedPage leaf, int index, byte[] key, byte[] value) {
-        int freedBytes = entrySize(key.length, leaf.value(index).length);
-        int neededBytes = entrySize(key.length, value.length);
+        int freedBytes = SlottedPage.entrySize(key.length, leaf.value(index).length);
+        int neededBytes = SlottedPage.entrySize(key.length, value.length);
         int availableBytes = leaf.freeSpace() + freedBytes;
         if (neededBytes > availableBytes) {
             throw new IllegalStateException("leaf is full: replacing needs " + neededBytes
@@ -100,11 +100,6 @@ public final class BPlusTree {
             pageId = childPageId;
         }
         throw new IllegalStateException("descent passed " + MAX_DEPTH + " levels; child pointers form a cycle");
-    }
-
-
-    static int entrySize(int keyLength, int valueLength) {
-        return SlottedPage.cellSize(keyLength, valueLength) + SlottedPage.SLOT_SIZE;
     }
 
     private static void requireFitsInOneCell(byte[] key, byte[] value) {
