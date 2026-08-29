@@ -1,8 +1,7 @@
 # 4. B+Tree insert
 
-Read and write a key/value pair through a tree of pages. Full pages split, and the split travels up
-to the parent. A split that reaches the root still throws, because growing a new root is the last
-piece. Delete is not in this milestone.
+Read and write a key/value pair through a tree of pages. Full pages split, the split travels up to
+the parent, and the root grows a new level when it has to. Delete is not in this milestone.
 
 ## What it is
 
@@ -275,6 +274,48 @@ splits, so it never needs both.
 
 When a split reaches the root there is nobody to take it, and `put` throws saying so.
 
+### Growing a new root
+
+This is the only place a B+Tree gets taller.
+
+Every split below the root hands its separator to a parent that absorbs it, so the path length does
+not change. The root has no parent, so a new level has to be built:
+
+```
+before                          after
+
+┌──────────────┐                ┌────────┐
+│ 40  70  100  │                │   70   │   <- same page id
+└──────────────┘                └──┬──┬──┘
+                             ┌─────┘  └─────┐
+                           [ 40 ]        [ 100 ]
+```
+
+Because the level is added on top, every leaf gets deeper by one at the same moment. That is why
+the tree stays balanced. Depth is never adjusted for a single leaf, only for all of them at once.
+
+**I keep the root's page id fixed.** By the time this runs the split has already rewritten the root
+page as the left half, so the old contents move out and the page is reused:
+
+```
+1. allocate L, copy the root page's contents into it
+2. reset the root page to INTERNAL, same page id
+3. root: leftmost -> L, separator -> the new right half
+```
+
+The alternative is to allocate a new page for the root and record its id somewhere. That means a
+second durable write that must not be lost, and until milestone 6 gives me ordering guarantees, a
+crash between the two writes would leave an unreachable tree. Keeping the id fixed costs one page
+copy per root split, which happens about log(fanout) times in the tree's whole life.
+
+Two things the copy has to carry across. The **type**, because the root is a leaf on the first
+split and internal on every one after. And the **right sibling**, because a split leaf points at
+its new right half and that pointer belongs to the copy now.
+
+Step 2 needs a page to change type in place. `SlottedPage.init` takes a raw buffer and I only have
+a page through the store, so the page layer gained `reset(PageType)`: empty this page and change
+its type. `init` is now `reset` on a fresh wrapper.
+
 ## Classes
 
 | Class | Owns | Where |
@@ -284,6 +325,7 @@ When a split reaches the root there is nobody to take it, and `put` throws sayin
 | `SplitPolicy` | Where to cut a page. Pure arithmetic | main |
 | `LeafSplit` | Turning one full leaf into two | main |
 | `InternalSplit` | Turning one full internal node into two, pushing a key up | main |
+| `RootSplit` | Adding a level, keeping the root's page id | main |
 | `SplitResult` | The separator and new page a split hands upward | main |
 | `BPlusTree` | Descent, get, put | main |
 | `HeapPageStore` | An in-memory `PageStore` | test |
@@ -296,7 +338,6 @@ When a split reaches the root there is nobody to take it, and `put` throws sayin
 |---|---|
 | Longest separator I can promote | about 1009 bytes (`MAX_CELL_SIZE` 1016, minus the varints and the 4-byte child id) |
 | Pair too big for one cell | `IllegalArgumentException`, naming overflow pages |
-| A split reaches the root | `IllegalStateException`, until the root can grow |
 | Duplicate separator, or an empty key used as one | `IllegalArgumentException` |
 | Child pointers form a cycle | `IllegalStateException` after 64 levels |
 | No cut fits | `IllegalStateException` from `SplitPolicy` |
@@ -308,7 +349,6 @@ under it.
 
 | Missing | What it costs |
 |---|---|
-| Growing a new root | A split that reaches the root throws. Everything below the root splits and propagates |
 | Delete | Not in this milestone |
 | Overflow pages | A pair over 1016 bytes is rejected |
 | A meta page | The root page id lives in a field, not on disk |

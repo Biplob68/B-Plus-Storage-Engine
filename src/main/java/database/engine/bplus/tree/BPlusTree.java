@@ -56,7 +56,7 @@ public final class BPlusTree {
 
         SplitResult rootSplit = insertInto(rootPageId, key, value, 0);
         if (rootSplit != null) {
-            throw new IllegalStateException("the root split; growing a new root is not implemented yet");
+            RootSplit.growNewRoot(store, rootPageId, rootSplit);
         }
     }
 

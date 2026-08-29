@@ -14,7 +14,6 @@ import static database.engine.bplus.tree.TreeFixture.key;
 import static database.engine.bplus.tree.TreeFixture.leafOf;
 import static database.engine.bplus.tree.TreeFixture.value;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 class BPlusTreeSplitTest {
@@ -108,17 +107,4 @@ class BPlusTreeSplitTest {
         TreeInvariants.check(store, tree.rootPageId());
     }
 
-    @Test
-    void aSplitReachingTheRootStillThrows() {
-        HeapPageStore store = new HeapPageStore();
-        BPlusTree tree = BPlusTree.create(store);
-
-        assertThatThrownBy(() -> {
-            for (int i = 0; i < 10_000; i++) {
-                tree.put(key(i), value(i, 8));
-            }
-        })
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("growing a new root");
-    }
 }

@@ -226,6 +226,14 @@ Free space was 4050 before (4043 gap + 7 dead). It is 4050 after, in one piece.
 Packing in slot order also puts sorted keys at rising offsets. That is only a side effect. The next
 insert goes to the lowest offset and breaks it again, so nothing should depend on it.
 
+### Reset
+
+`reset(type)` zeroes the page and sets its type, keeping the same page. `init` is just `reset` on a
+fresh wrapper.
+
+The tree uses it for a root split: the old root's contents move to a new page, then the root page
+is reset to INTERNAL and rebuilt, so the root's page id never changes.
+
 ### Free space
 
 Two header fields are enough:

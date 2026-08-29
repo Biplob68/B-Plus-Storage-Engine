@@ -1,5 +1,6 @@
 package database.engine.bplus.tree;
 
+import database.engine.bplus.page.Page;
 import database.engine.bplus.page.PageType;
 import database.engine.bplus.page.SlottedPage;
 
@@ -52,6 +53,58 @@ final class TreeFixture {
         InternalNode node = new InternalNode(store.get(internalPageId));
         node.insertSeparator(key(separator), childPageId);
         store.release(internalPageId);
+    }
+
+    /** Levels from the root down to a leaf. A single leaf root is height 1. */
+    static int heightOf(PageStore store, int rootPageId) {
+        int height = 1;
+        for (int pageId = rootPageId; ; height++) {
+            int childPageId = leftChildOf(store, pageId);
+            if (childPageId == Page.NO_PAGE) {
+                return height;
+            }
+            pageId = childPageId;
+        }
+    }
+
+    /** Every key in the tree, read by walking the leaf chain rather than descending per key. */
+    static List<byte[]> scanAllKeys(PageStore store, int rootPageId) {
+        List<byte[]> keys = new ArrayList<>();
+        int pageId = leftmostLeafOf(store, rootPageId);
+
+        while (pageId != Page.NO_PAGE) {
+            SlottedPage leaf = store.get(pageId);
+            int nextPageId;
+            try {
+                for (int i = 0; i < leaf.cellCount(); i++) {
+                    keys.add(leaf.key(i));
+                }
+                nextPageId = leaf.rightSibling();
+            } finally {
+                store.release(pageId);
+            }
+            pageId = nextPageId;
+        }
+        return keys;
+    }
+
+    private static int leftmostLeafOf(PageStore store, int rootPageId) {
+        int pageId = rootPageId;
+        for (int childPageId = leftChildOf(store, pageId); childPageId != Page.NO_PAGE;
+             childPageId = leftChildOf(store, pageId)) {
+            pageId = childPageId;
+        }
+        return pageId;
+    }
+
+    /** Slot 0's child, or {@link Page#NO_PAGE} when the page is a leaf. */
+    private static int leftChildOf(PageStore store, int pageId) {
+        SlottedPage page = store.get(pageId);
+        try {
+            return page.type() == PageType.LEAF ? Page.NO_PAGE : new InternalNode(page).childAt(0);
+        } finally {
+            store.release(pageId);
+        }
     }
 
     static List<byte[]> keysOf(PageStore store, int pageId) {

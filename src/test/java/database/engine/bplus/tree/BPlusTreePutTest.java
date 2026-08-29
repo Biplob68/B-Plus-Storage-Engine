@@ -90,17 +90,6 @@ class BPlusTreePutTest {
     }
 
     @Test
-    void aRootLeafThatSplitsStillThrows() {
-        HeapPageStore store = new HeapPageStore();
-        BPlusTree tree = BPlusTree.create(store);
-
-        // The root is the only leaf, so its split has no parent to take the separator.
-        assertThatThrownBy(() -> fillTheRootLeaf(tree))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("growing a new root");
-    }
-
-    @Test
     void emptyKeysAndValuesWork() {
         HeapPageStore store = new HeapPageStore();
         BPlusTree tree = BPlusTree.create(store);
@@ -124,12 +113,5 @@ class BPlusTreePutTest {
 
         assertThat(tree.get(key(10))).isNull();
         assertThat(store.borrowedCount()).isZero();
-    }
-
-
-    private static void fillTheRootLeaf(BPlusTree tree) {
-        for (int i = 0; i < 10_000; i++) {
-            tree.put(key(i), value(i, 8));
-        }
     }
 }

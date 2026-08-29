@@ -45,18 +45,19 @@ public final class SlottedPage {
 
     // ------------------------- lifecycle -------------------------------------------
 
-    /**
-     * Formats {@code buffer} as an empty page, zeroing it so a recycled frame leaks no old bytes.
-     */
-    public static SlottedPage init(ByteBuffer buffer, PageType type) {
-        Objects.requireNonNull(type, "type");
-        ByteBuffer pageBuffer = pageView(buffer);
-        pageBuffer.put(0, EMPTY_PAGE, 0, Page.SIZE);
 
-        SlottedPage page = new SlottedPage(pageBuffer);
-        page.header.type(type);
-        page.header.cellAreaStart(Page.SIZE); // every other header field is zero
+    public static SlottedPage init(ByteBuffer buffer, PageType type) {
+        SlottedPage page = new SlottedPage(pageView(buffer));
+        page.reset(type);
         return page;
+    }
+
+
+    public void reset(PageType type) {
+        Objects.requireNonNull(type, "type");
+        buffer.put(0, EMPTY_PAGE, 0, Page.SIZE);
+        header.type(type);
+        header.cellAreaStart(Page.SIZE); // every other header field is zero
     }
 
     /**
@@ -117,9 +118,6 @@ public final class SlottedPage {
 
     // ------------------------ reading ----------------------------------
 
-    /**
-     * @return the slot index, or {@code -(insertionPoint) - 1} if absent
-     */
     public int binarySearch(byte[] key) {
         Objects.requireNonNull(key, "key");
         int low = 0;
@@ -152,14 +150,10 @@ public final class SlottedPage {
         return CellCodec.size(keyLength, valueLength);
     }
 
-    /** Bytes one entry costs a page: its cell plus its slot. */
     public static int entrySize(int keyLength, int valueLength) {
         return cellSize(keyLength, valueLength) + SLOT_SIZE;
     }
 
-    /**
-     * Whether the pair fits, compacting first if need be. False also means "too big to ever fit".
-     */
     public boolean hasSpaceFor(int keyLength, int valueLength) {
         if (keyLength < 0 || valueLength < 0) {
             throw new IllegalArgumentException("negative length: " + keyLength + "/" + valueLength);
@@ -168,9 +162,7 @@ public final class SlottedPage {
         return cellBytes <= MAX_CELL_SIZE && cellBytes + SLOT_SIZE <= freeSpace();
     }
 
-    /**
-     * Inserts the pair at {@code slotIndex}.
-     */
+
     public void insertCell(int slotIndex, byte[] key, byte[] value) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
@@ -198,10 +190,6 @@ public final class SlottedPage {
         header.cellAreaStart(cellOffset);
     }
 
-    /**
-     * Removes the pair in slot {@code slotIndex}. Its bytes go straight back to the gap when the cell
-     * sat at the bottom of the cell area, and count as fragmented otherwise.
-     */
     public void deleteCell(int slotIndex) {
         int cellOffset = slots.cellOffset(slotIndex);
         int cellBytes = CellCodec.byteLength(buffer, cellOffset);
@@ -255,9 +243,6 @@ public final class SlottedPage {
         header.fragmentedBytes(0);
     }
 
-    /**
-     * Negative when the key stored in {@code slotIndex} sorts before {@code key}.
-     */
     private int compareStoredKey(int slotIndex, byte[] key) {
         return CellCodec.compareKey(buffer, slots.cellOffset(slotIndex), key);
     }
