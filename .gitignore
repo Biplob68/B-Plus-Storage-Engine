@@ -5,6 +5,7 @@ build/
 !**/src/test/**/build/
 .kotlin
 CLAUDE.md
+.claude
 
 ### IntelliJ IDEA ###
 .idea/modules.xml

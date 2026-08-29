@@ -21,9 +21,11 @@ class SlottedPageTest {
         return SlottedPage.init(ByteBuffer.allocate(Page.SIZE), PageType.LEAF);
     }
 
-    /** 4-byte big-endian, so ascending ints give ascending unsigned byte order. */
+    /**
+     * 4-byte big-endian, so ascending ints give ascending unsigned byte order.
+     */
     private static byte[] key(int i) {
-        return new byte[] {(byte) (i >>> 24), (byte) (i >>> 16), (byte) (i >>> 8), (byte) i};
+        return new byte[]{(byte) (i >>> 24), (byte) (i >>> 16), (byte) (i >>> 8), (byte) i};
     }
 
     private static byte[] value(int i) {
@@ -118,7 +120,7 @@ class SlottedPageTest {
     @Test
     void binarySearchReportsInsertionPointsForMissingKeys() {
         SlottedPage page = newLeaf();
-        for (int i : new int[] {10, 20, 30}) {
+        for (int i : new int[]{10, 20, 30}) {
             insert(page, key(i), value(i));
         }
 
@@ -211,7 +213,7 @@ class SlottedPageTest {
         int firstOdd = (fullCount % 2 == 0) ? fullCount - 1 : fullCount - 2;
         for (int i = firstOdd; i >= 1; i -= 2) {
             byte[] k = page.key(i);
-            reclaimed += SlottedPage.cellSize(k.length, page.value(i).length) + SlotDirectory.SLOT_SIZE;
+            reclaimed += SlottedPage.cellSize(k.length, page.value(i).length) + SlottedPage.SLOT_SIZE;
             page.deleteCell(i);
             model.remove(k);
         }

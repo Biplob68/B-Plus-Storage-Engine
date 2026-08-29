@@ -3,14 +3,16 @@
 One doc per feature. I write it after the feature is done and the tests are green, so it describes
 what I actually built, not what I planned to build.
 
-The numbers match the milestones.
+The numbers match the milestones. Number 0 is the shared foundation both layers sit on, not a
+milestone of its own.
 
 | # | Feature | Status | Doc |
 |---|---------|--------|-----|
+| 0 | Bytes | Done | [00-bytes.md](00-bytes.md) |
 | 1 | SlottedPage | Done | [01-slotted-page.md](01-slotted-page.md) |
 | 2 | Pager | Not started | — |
 | 3 | BufferPool | Not started | — |
-| 4 | BPlusTree | Not started | — |
+| 4 | BPlusTree | Insert done | [04-bplus-insert.md](04-bplus-insert.md) |
 | 5 | Oracle harness | Not started | — |
 | 6 | COW durability | Not started | — |
 | 7 | Latch crabbing | Not started | — |
@@ -37,8 +39,6 @@ Write in plain, short sentences.
 ```markdown
 # N. <Feature>
 
-**Status:** Done · **Package:** `...` · **Tests:** N passing
-
 ## What it is
 Two or three sentences.
 
@@ -54,15 +54,6 @@ Real bytes at real offsets.
 ## How it works
 One section per operation. The steps, the cost, and the bytes before and after where it helps.
 
-## Limits and errors
-One table.
-
 ## Classes
 Which class owns which part.
-
-## Tests
-The tests that matter, and what they check.
-
-## What is missing
-What I left out, and what it will cost later.
 ```
