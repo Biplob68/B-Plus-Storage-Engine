@@ -54,34 +54,53 @@ public final class BPlusTree {
         Objects.requireNonNull(value, "value");
         requireFitsInOneCell(key, value);
 
-        int leafPageId = findLeafPageId(key);
-        SlottedPage leaf = store.get(leafPageId);
+        SplitResult rootSplit = insertInto(rootPageId, key, value, 0);
+        if (rootSplit != null) {
+            throw new IllegalStateException("the root split; growing a new root is not implemented yet");
+        }
+    }
+
+    private SplitResult insertInto(int pageId, byte[] key, byte[] value, int depth) {
+        if (depth >= MAX_DEPTH) {
+            throw cycleDetected();
+        }
+        SlottedPage page = store.get(pageId);
         try {
-            int index = leaf.binarySearch(key);
-            if (index >= 0) {
-                replace(leaf, index, key, value);
-            } else {
-                leaf.insertCell(-index - 1, key, value);
-            }
+            return page.type() == PageType.LEAF
+                    ? insertIntoLeaf(pageId, page, key, value)
+                    : insertIntoInternal(pageId, page, key, value, depth);
         } finally {
-            store.release(leafPageId);
+            store.release(pageId);
         }
     }
 
-
-    private static void replace(SlottedPage leaf, int index, byte[] key, byte[] value) {
-        int freedBytes = SlottedPage.entrySize(key.length, leaf.value(index).length);
-        int neededBytes = SlottedPage.entrySize(key.length, value.length);
-        int availableBytes = leaf.freeSpace() + freedBytes;
-        if (neededBytes > availableBytes) {
-            throw new IllegalStateException("leaf is full: replacing needs " + neededBytes
-                    + " bytes, only " + availableBytes + " would be free");
+    private SplitResult insertIntoLeaf(int pageId, SlottedPage leaf, byte[] key, byte[] value) {
+        int index = leaf.binarySearch(key);
+        int insertionPoint = index >= 0 ? index : -index - 1;
+        if (index >= 0) {
+            // insertCell rejects duplicates, so replacing means removing first. Deleting shifts the
+            // slots above down one, which leaves exactly the gap the key belongs in.
+            leaf.deleteCell(index);
         }
-        // Deleting shifts the slots above down one, which leaves exactly the gap the key belongs in.
-        leaf.deleteCell(index);
-        leaf.insertCell(index, key, value);
+        if (leaf.hasSpaceFor(key.length, value.length)) {
+            leaf.insertCell(insertionPoint, key, value);
+            return null;
+        }
+        return LeafSplit.split(store, pageId, key, value);
     }
 
+    private SplitResult insertIntoInternal(int pageId, SlottedPage page, byte[] key, byte[] value, int depth) {
+        InternalNode node = new InternalNode(page);
+        SplitResult childSplit = insertInto(node.findChild(key), key, value, depth + 1);
+        if (childSplit == null) {
+            return null;
+        }
+        if (node.hasSpaceForSeparator(childSplit.separatorKey().length)) {
+            node.insertSeparator(childSplit.separatorKey(), childSplit.newPageId());
+            return null;
+        }
+        return InternalSplit.split(store, pageId, childSplit.separatorKey(), childSplit.newPageId());
+    }
 
     private int findLeafPageId(byte[] key) {
         int pageId = rootPageId;
@@ -99,7 +118,11 @@ public final class BPlusTree {
             }
             pageId = childPageId;
         }
-        throw new IllegalStateException("descent passed " + MAX_DEPTH + " levels; child pointers form a cycle");
+        throw cycleDetected();
+    }
+
+    private static IllegalStateException cycleDetected() {
+        return new IllegalStateException("descent passed " + MAX_DEPTH + " levels; child pointers form a cycle");
     }
 
     private static void requireFitsInOneCell(byte[] key, byte[] value) {

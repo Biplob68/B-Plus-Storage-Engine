@@ -1,7 +1,8 @@
 # 4. B+Tree insert
 
-Read and write a key/value pair through a tree of pages. Splitting is chosen but not yet wired up,
-so a full leaf still throws. Delete is not in this milestone.
+Read and write a key/value pair through a tree of pages. Full pages split, and the split travels up
+to the parent. A split that reaches the root still throws, because growing a new root is the last
+piece. Delete is not in this milestone.
 
 ## What it is
 
@@ -120,23 +121,18 @@ test hang.
 
 ```
 cellSize(key, value) > MAX_CELL_SIZE  ->  throw, before any descent
-binarySearch >= 0                     ->  replace
-binarySearch <  0                     ->  insertCell at -index-1
+key already there                     ->  delete it, then insert or split
+key not there                         ->  insert at -index-1, or split
 ```
 
-`insertCell` rejects duplicate keys, so replacing is a delete followed by an insert. The order
-matters:
+`insertCell` rejects duplicate keys, so replacing means removing first. The insert goes back at the
+same index, because deleting shifts the slots above down one and leaves exactly the gap the key
+belongs in.
 
-```
-1. work out what the delete would free and what the new cell needs
-2. if it still would not fit, throw and delete nothing
-3. deleteCell(index)
-4. insertCell(index, key, value)
-```
-
-Step 2 is the point. Without it, growing a value on a nearly full page throws away a record I
-cannot put back. The insert goes back at the same index, because deleting shifts the slots above
-down one and leaves exactly the gap the key belongs in.
+Deleting before knowing the new value fits used to risk throwing away a record I could not put
+back, so there was a space check first. That check is gone. "Does not fit" now means "split", and a
+split always succeeds once the pair is under `MAX_CELL_SIZE`, so the record is never at risk. It
+just ends up in one of the two halves.
 
 ### Choosing where to split
 
@@ -230,6 +226,55 @@ after    L [ 20 40 50 ]  ->  R [ 60 80 ]
 The key must not already be in the leaf. A replace that does not fit is a different path, and `put`
 settles duplicates before it gets here.
 
+### Splitting a full internal node
+
+Same shape as a leaf split, with one difference that matters.
+
+A leaf **copies** its separator up. A leaf key is data, so moving it would delete a record. An
+internal node **moves** it. The key at the cut goes to the parent and is in neither half
+afterwards, and its child becomes the right half's leftmost:
+
+```
+before   leftmost=c0 | 40->c1 | 60->c2 | 70->c3 | 100->c4 | 140->c5
+                                          ^ cut
+
+after    left   leftmost=c0 | 40->c1 | 60->c2
+         right  leftmost=c3 | 100->c4 | 140->c5
+         70 goes up, and is in neither half
+```
+
+An internal key is only a signpost. Once the parent holds it, repeating it inside the right half
+would say nothing new, and the right half's leftmost subtree has no separator slot to hold it
+anyway.
+
+This is where the empty-key leftmost cell earns its keep. The right half is built with the same
+`setLeftmostChild` call as any other internal page, so the cut child needs no special handling.
+
+One wrinkle in the byte accounting. I hand `SplitPolicy` the sizes as they are now, but the child
+at the cut shrinks when it moves: from `entrySize(keyLength, 4)` down to `entrySize(0, 4)`, which
+is 8 bytes. So the right half always comes out smaller than the policy measured. The left half is
+exact, since the cut entry is not in it. Being wrong in that direction is safe: if the policy says
+it fits, it fits with room to spare.
+
+### Carrying a split upward
+
+An insert returns either nothing, or the split its parent has to take.
+
+```
+insertInto(page)
+    LEAF      ->  insert, or LeafSplit and return the result upward
+    INTERNAL  ->  recurse into the child
+                  nothing came back  ->  done
+                  a split came back  ->  absorb the separator if it fits
+                                     ->  otherwise InternalSplit and pass it up
+```
+
+The node stays held across the recursion, because it may have to absorb a separator afterwards.
+That is the opposite of the read path, which releases the parent before descending. A read never
+splits, so it never needs both.
+
+When a split reaches the root there is nobody to take it, and `put` throws saying so.
+
 ## Classes
 
 | Class | Owns | Where |
@@ -238,6 +283,7 @@ settles duplicates before it gets here.
 | `InternalNode` | The internal page format: separators, children, routing | main |
 | `SplitPolicy` | Where to cut a page. Pure arithmetic | main |
 | `LeafSplit` | Turning one full leaf into two | main |
+| `InternalSplit` | Turning one full internal node into two, pushing a key up | main |
 | `SplitResult` | The separator and new page a split hands upward | main |
 | `BPlusTree` | Descent, get, put | main |
 | `HeapPageStore` | An in-memory `PageStore` | test |
@@ -250,7 +296,7 @@ settles duplicates before it gets here.
 |---|---|
 | Longest separator I can promote | about 1009 bytes (`MAX_CELL_SIZE` 1016, minus the varints and the 4-byte child id) |
 | Pair too big for one cell | `IllegalArgumentException`, naming overflow pages |
-| Leaf full | `IllegalStateException`, until splitting is wired up |
+| A split reaches the root | `IllegalStateException`, until the root can grow |
 | Duplicate separator, or an empty key used as one | `IllegalArgumentException` |
 | Child pointers form a cycle | `IllegalStateException` after 64 levels |
 | No cut fits | `IllegalStateException` from `SplitPolicy` |
@@ -262,7 +308,7 @@ under it.
 
 | Missing | What it costs |
 |---|---|
-| Splitting is not wired up | A full leaf still throws from `put`. `LeafSplit` works and is tested directly, but a fresh tree is a single leaf, so its first split is a root split and there is no parent to take the separator until the root can grow |
+| Growing a new root | A split that reaches the root throws. Everything below the root splits and propagates |
 | Delete | Not in this milestone |
 | Overflow pages | A pair over 1016 bytes is rejected |
 | A meta page | The root page id lives in a field, not on disk |

@@ -89,6 +89,12 @@ final class InternalNode {
         page.insertCell(-index - 1, key, Bytes.encodeInt(childPageId));
     }
 
+    void clear() {
+        for (int i = page.cellCount() - 1; i >= 0; i--) {
+            page.deleteCell(i);
+        }
+    }
+
     boolean hasSpaceForSeparator(int keyLength) {
         return page.hasSpaceFor(keyLength, CHILD_ID_BYTES);
     }

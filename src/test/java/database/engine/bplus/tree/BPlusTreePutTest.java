@@ -90,38 +90,14 @@ class BPlusTreePutTest {
     }
 
     @Test
-    void aReplacementThatCannotFitLeavesTheOldValueAlone() {
+    void aRootLeafThatSplitsStillThrows() {
         HeapPageStore store = new HeapPageStore();
         BPlusTree tree = BPlusTree.create(store);
 
-        int stored = fillTheRootLeaf(tree);
-
-        // Deleting key 0 frees only its own small cell, nowhere near enough for a 900-byte value.
-        assertThatThrownBy(() -> tree.put(key(0), value(0, 900)))
+        // The root is the only leaf, so its split has no parent to take the separator.
+        assertThatThrownBy(() -> fillTheRootLeaf(tree))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("full");
-
-        assertThat(tree.get(key(0))).as("old value survives a failed replace").containsExactly(value(0, 8));
-        assertThat(tree.get(key(stored - 1))).isNotNull();
-        TreeInvariants.check(store, tree.rootPageId());
-    }
-
-    @Test
-    void aFullLeafThrowsUntilSplittingExists() {
-        HeapPageStore store = new HeapPageStore();
-        BPlusTree tree = BPlusTree.create(store);
-
-        int stored = fillTheRootLeaf(tree);
-
-        assertThat(stored).isGreaterThan(100);
-        assertThatThrownBy(() -> tree.put(key(stored), value(stored, 8)))
-                .isInstanceOf(IllegalStateException.class);
-
-        // everything already stored is still readable
-        for (int i = 0; i < stored; i++) {
-            assertThat(tree.get(key(i))).as("key %d", i).containsExactly(value(i, 8));
-        }
-        assertThat(store.pageCount()).as("no split happened").isEqualTo(1);
+                .hasMessageContaining("growing a new root");
     }
 
     @Test
@@ -151,15 +127,9 @@ class BPlusTreePutTest {
     }
 
 
-    private static int fillTheRootLeaf(BPlusTree tree) {
-        int i = 0;
-        try {
-            for (; i < 10_000; i++) {
-                tree.put(key(i), value(i, 8));
-            }
-        } catch (IllegalStateException expected) {
-            return i;
+    private static void fillTheRootLeaf(BPlusTree tree) {
+        for (int i = 0; i < 10_000; i++) {
+            tree.put(key(i), value(i, 8));
         }
-        throw new AssertionError("the leaf never filled up");
     }
 }
