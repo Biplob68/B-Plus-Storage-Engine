@@ -48,6 +48,75 @@ public final class BPlusTree {
         }
     }
 
+    public boolean delete(byte[] key) {
+        Objects.requireNonNull(key, "key");
+        return deleteFrom(rootPageId, key, 0);
+    }
+
+    private boolean deleteFrom(int pageId, byte[] key, int depth) {
+        if (depth >= MAX_DEPTH) {
+            throw cycleDetected();
+        }
+        SlottedPage page = store.get(pageId);
+        try {
+            return page.type() == PageType.LEAF
+                    ? deleteFromLeaf(page, key)
+                    : deleteFromInternal(new InternalNode(page), key, depth);
+        } finally {
+            store.release(pageId);
+        }
+    }
+
+    private static boolean deleteFromLeaf(SlottedPage leaf, byte[] key) {
+        int index = leaf.binarySearch(key);
+        if (index < 0) {
+            return false;
+        }
+        leaf.deleteCell(index);
+        return true;
+    }
+
+
+    private boolean deleteFromInternal(InternalNode node, byte[] key, int depth) {
+        int childSlot = node.findChildSlot(key);
+        if (!deleteFrom(node.childAt(childSlot), key, depth + 1)) {
+            return false;
+        }
+        rebalanceIfUnderflowed(node, childSlot);
+        return true;
+    }
+
+    private void rebalanceIfUnderflowed(InternalNode parent, int childSlot) {
+        if (!isUnderflowedLeaf(parent.childAt(childSlot))) {
+            return;
+        }
+        int leftSlot = adjacentPairFor(parent, childSlot);
+        if (leftSlot < 0) {
+            return; // an only child has no sibling to pool with
+        }
+        LeafRebalance.rebalance(store, parent, leftSlot);
+    }
+
+    private static int adjacentPairFor(InternalNode parent, int childSlot) {
+        if (childSlot + 1 < parent.childCount()) {
+            return childSlot;
+        }
+        return childSlot > 0 ? childSlot - 1 : -1;
+    }
+
+
+    private boolean isUnderflowedLeaf(int pageId) {
+        SlottedPage page = store.get(pageId);
+        try {
+            if (page.type() != PageType.LEAF) {
+                return false;
+            }
+            int usedBytes = SlottedPage.USABLE_BYTES - page.freeSpace();
+            return usedBytes * 3 < SlottedPage.USABLE_BYTES;
+        } finally {
+            store.release(pageId);
+        }
+    }
 
     public void put(byte[] key, byte[] value) {
         Objects.requireNonNull(key, "key");
