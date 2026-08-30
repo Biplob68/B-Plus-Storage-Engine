@@ -20,6 +20,8 @@ final class HeapPageStore implements PageStore {
 
     private int borrowed;
 
+    private int freed;
+
     @Override
     public int allocate(PageType type) {
         int pageId = nextPageId++;
@@ -45,6 +47,19 @@ final class HeapPageStore implements PageStore {
             throw new IllegalArgumentException("no such page: " + pageId);
         }
         borrowed--;
+    }
+
+    @Override
+    public void free(int pageId) {
+        if (pages.remove(pageId) == null) {
+            throw new IllegalArgumentException("no such page: " + pageId);
+        }
+        freed++;
+    }
+
+    /** Pages handed back by merges. A real store would put them on a free list. */
+    int freedCount() {
+        return freed;
     }
 
     int borrowedCount() {

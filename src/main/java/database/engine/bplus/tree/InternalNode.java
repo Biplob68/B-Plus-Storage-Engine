@@ -47,7 +47,7 @@ final class InternalNode {
         return page.key(slotIndex);
     }
 
-    private int findChildSlot(byte[] key) {
+    int findChildSlot(byte[] key) {
         Objects.requireNonNull(key, "key");
         if (page.cellCount() == 0) {
             throw new IllegalStateException("internal page has no children");
@@ -87,6 +87,30 @@ final class InternalNode {
             throw new IllegalArgumentException("separator already present in slot " + index);
         }
         page.insertCell(-index - 1, key, Bytes.encodeInt(childPageId));
+    }
+
+    /** Drops one child and the separator in front of it. Never slot 0, which has no separator. */
+    void removeChild(int slotIndex) {
+        if (slotIndex == 0) {
+            throw new IllegalArgumentException("slot 0 is the leftmost child and has no separator to remove");
+        }
+        page.deleteCell(slotIndex);
+    }
+
+    /**
+     * Whether {@code newKey} would fit in place of the separator in {@code slotIndex}. The old cell
+     * is freed by the replacement, so its bytes count as available.
+     */
+    boolean canReplaceSeparator(int slotIndex, byte[] newKey) {
+        int freed = SlottedPage.entrySize(page.key(slotIndex).length, CHILD_ID_BYTES);
+        return SlottedPage.entrySize(newKey.length, CHILD_ID_BYTES) <= page.freeSpace() + freed;
+    }
+
+    /** Moves a separator to a new key, keeping the child it points at. */
+    void replaceSeparator(int slotIndex, byte[] newKey) {
+        int childPageId = childAt(slotIndex);
+        page.deleteCell(slotIndex);
+        insertSeparator(newKey, childPageId);
     }
 
     void clear() {

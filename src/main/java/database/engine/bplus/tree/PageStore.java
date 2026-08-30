@@ -23,4 +23,11 @@ public interface PageStore {
      * Gives back a page borrowed with {@link #get}.
      */
     void release(int pageId);
+
+    /**
+     * Gives a page back for reuse. A merge is the only thing that frees one.
+     *
+     * <p>The page must not be reachable from the tree any more, and must not be borrowed.
+     */
+    void free(int pageId);
 }
