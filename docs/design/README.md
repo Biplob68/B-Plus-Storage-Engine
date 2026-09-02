@@ -12,7 +12,7 @@ milestone of its own.
 | 1 | SlottedPage | Done | [01-slotted-page.md](01-slotted-page.md) |
 | 2 | Pager | Not started | — |
 | 3 | BufferPool | Not started | — |
-| 4 | BPlusTree | Insert done | [04-bplus-insert.md](04-bplus-insert.md) |
+| 4 | BPlusTree | Insert and delete done | [04-bplus-insert.md](04-bplus-insert.md) · [04-bplus-delete.md](04-bplus-delete.md) |
 | 5 | Oracle harness | Not started | — |
 | 6 | COW durability | Not started | — |
 | 7 | Latch crabbing | Not started | — |

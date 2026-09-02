@@ -50,7 +50,11 @@ public final class BPlusTree {
 
     public boolean delete(byte[] key) {
         Objects.requireNonNull(key, "key");
-        return deleteFrom(rootPageId, key, 0);
+        boolean removed = deleteFrom(rootPageId, key, 0);
+        if (removed) {
+            RootCollapse.collapseWhilePossible(store, rootPageId);
+        }
+        return removed;
     }
 
     private boolean deleteFrom(int pageId, byte[] key, int depth) {
@@ -87,14 +91,18 @@ public final class BPlusTree {
     }
 
     private void rebalanceIfUnderflowed(InternalNode parent, int childSlot) {
-        if (!isUnderflowedLeaf(parent.childAt(childSlot))) {
+        if (!isUnderflowed(parent.childAt(childSlot))) {
             return;
         }
         int leftSlot = adjacentPairFor(parent, childSlot);
         if (leftSlot < 0) {
             return; // an only child has no sibling to pool with
         }
-        LeafRebalance.rebalance(store, parent, leftSlot);
+        if (isLeaf(parent.childAt(leftSlot))) {
+            LeafRebalance.rebalance(store, parent, leftSlot);
+        } else {
+            InternalRebalance.rebalance(store, parent, leftSlot);
+        }
     }
 
     private static int adjacentPairFor(InternalNode parent, int childSlot) {
@@ -104,15 +112,20 @@ public final class BPlusTree {
         return childSlot > 0 ? childSlot - 1 : -1;
     }
 
-
-    private boolean isUnderflowedLeaf(int pageId) {
+    private boolean isUnderflowed(int pageId) {
         SlottedPage page = store.get(pageId);
         try {
-            if (page.type() != PageType.LEAF) {
-                return false;
-            }
             int usedBytes = SlottedPage.USABLE_BYTES - page.freeSpace();
             return usedBytes * 3 < SlottedPage.USABLE_BYTES;
+        } finally {
+            store.release(pageId);
+        }
+    }
+
+    private boolean isLeaf(int pageId) {
+        SlottedPage page = store.get(pageId);
+        try {
+            return page.type() == PageType.LEAF;
         } finally {
             store.release(pageId);
         }
