@@ -1,5 +1,6 @@
 package database.engine.bplus.tree;
 
+import database.engine.bplus.page.PageType;
 import database.engine.bplus.page.SlottedPage;
 
 
@@ -9,7 +10,7 @@ final class PageCopy {
         throw new AssertionError("no instances");
     }
 
-    static int toNewPage(PageStore store, int sourcePageId) {
+    static int copyToNewPage(PageStore store, int sourcePageId) {
         int copyPageId = store.allocate(typeOf(store, sourcePageId));
         copyInto(store, sourcePageId, copyPageId);
         return copyPageId;
@@ -34,7 +35,7 @@ final class PageCopy {
         }
     }
 
-    private static database.engine.bplus.page.PageType typeOf(PageStore store, int pageId) {
+    private static PageType typeOf(PageStore store, int pageId) {
         SlottedPage page = store.get(pageId);
         try {
             return page.type();

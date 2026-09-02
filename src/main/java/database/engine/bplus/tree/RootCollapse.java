@@ -29,7 +29,7 @@ final class RootCollapse {
         throw new AssertionError("no instances");
     }
 
-    static void collapseWhilePossible(PageStore store, int rootPageId) {
+    static void collapse(PageStore store, int rootPageId) {
         while (collapseOnce(store, rootPageId)) {
             // keep going
         }

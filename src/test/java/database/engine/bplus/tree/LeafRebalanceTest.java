@@ -1,5 +1,6 @@
 package database.engine.bplus.tree;
 
+import database.engine.bplus.page.Page;
 import database.engine.bplus.page.PageType;
 import database.engine.bplus.page.SlottedPage;
 import org.junit.jupiter.api.Test;
@@ -7,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static database.engine.bplus.tree.TreeFixture.addSeparator;
-import static database.engine.bplus.tree.TreeFixture.chain;
+import static database.engine.bplus.tree.TreeFixture.linkSiblings;
 import static database.engine.bplus.tree.TreeFixture.internalOf;
 import static database.engine.bplus.tree.TreeFixture.key;
 import static database.engine.bplus.tree.TreeFixture.keysOf;
@@ -38,8 +39,8 @@ class LeafRebalanceTest {
         int a = leafOf(store, 10, 20);
         int b = leafOf(store, 30, 40);
         int c = leafOf(store, 50, 60);
-        chain(store, a, b);
-        chain(store, b, c);
+        linkSiblings(store, a, b);
+        linkSiblings(store, b, c);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 30, b);
@@ -66,7 +67,7 @@ class LeafRebalanceTest {
         HeapPageStore store = new HeapPageStore();
         int a = leafOfSize(store, 0, 2, 900);   // underflowed
         int b = leafOfSize(store, 10, 4, 900);  // nearly full
-        chain(store, a, b);
+        linkSiblings(store, a, b);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 10, b);
@@ -94,7 +95,7 @@ class LeafRebalanceTest {
         HeapPageStore store = new HeapPageStore();
         int a = leafOf(store, 10);
         int b = leafOf(store, 30);
-        chain(store, a, b);
+        linkSiblings(store, a, b);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 30, b);
@@ -102,7 +103,7 @@ class LeafRebalanceTest {
 
         assertThat(LeafRebalance.rebalance(store, root, 0)).isTrue();
 
-        assertThat(rightSiblingOf(store, a)).isEqualTo(database.engine.bplus.page.Page.NO_PAGE);
+        assertThat(rightSiblingOf(store, a)).isEqualTo(Page.NO_PAGE);
         assertThat(root.childCount()).as("the parent is down to its leftmost child").isEqualTo(1);
         store.release(rootId);
         TreeInvariants.check(store, rootId);
@@ -113,7 +114,7 @@ class LeafRebalanceTest {
         HeapPageStore store = new HeapPageStore();
         int a = leafOf(store, 10, 20);
         int b = leafOf(store);
-        chain(store, a, b);
+        linkSiblings(store, a, b);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 30, b);

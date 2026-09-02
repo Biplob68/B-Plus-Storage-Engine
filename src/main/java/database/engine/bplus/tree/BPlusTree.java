@@ -48,11 +48,41 @@ public final class BPlusTree {
         }
     }
 
+    public Cursor scan() {
+        return scan(null, null);
+    }
+
+    public Cursor scan(byte[] fromInclusive, byte[] toExclusive) {
+        int startLeafPageId = fromInclusive == null
+                ? leftmostLeafPageId()
+                : findLeafPageId(fromInclusive);
+        return new Cursor(store, startLeafPageId, fromInclusive, toExclusive);
+    }
+
+    private int leftmostLeafPageId() {
+        int pageId = rootPageId;
+
+        for (int depth = 0; depth < MAX_DEPTH; depth++) {
+            SlottedPage page = store.get(pageId);
+            int childPageId;
+            try {
+                if (page.type() == PageType.LEAF) {
+                    return pageId;
+                }
+                childPageId = new InternalNode(page).childAt(0);
+            } finally {
+                store.release(pageId);
+            }
+            pageId = childPageId;
+        }
+        throw cycleDetected();
+    }
+
     public boolean delete(byte[] key) {
         Objects.requireNonNull(key, "key");
         boolean removed = deleteFrom(rootPageId, key, 0);
         if (removed) {
-            RootCollapse.collapseWhilePossible(store, rootPageId);
+            RootCollapse.collapse(store, rootPageId);
         }
         return removed;
     }
@@ -138,7 +168,7 @@ public final class BPlusTree {
 
         SplitResult rootSplit = insertInto(rootPageId, key, value, 0);
         if (rootSplit != null) {
-            RootSplit.growNewRoot(store, rootPageId, rootSplit);
+            RootSplit.grow(store, rootPageId, rootSplit);
         }
     }
 
