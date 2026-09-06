@@ -11,7 +11,7 @@ final class RootSplit {
     }
 
     static void growNewRoot(PageStore store, int rootPageId, SplitResult split) {
-        int leftPageId = copyOf(store, rootPageId);
+        int leftPageId = PageCopy.toNewPage(store, rootPageId);
 
         SlottedPage rootPage = store.get(rootPageId);
         try {
@@ -25,22 +25,4 @@ final class RootSplit {
     }
 
 
-    private static int copyOf(PageStore store, int sourcePageId) {
-        SlottedPage source = store.get(sourcePageId);
-        try {
-            int copyPageId = store.allocate(source.type());
-            SlottedPage copy = store.get(copyPageId);
-            try {
-                for (int i = 0; i < source.cellCount(); i++) {
-                    copy.insertCell(i, source.key(i), source.value(i));
-                }
-                copy.setRightSibling(source.rightSibling());
-            } finally {
-                store.release(copyPageId);
-            }
-            return copyPageId;
-        } finally {
-            store.release(sourcePageId);
-        }
-    }
 }

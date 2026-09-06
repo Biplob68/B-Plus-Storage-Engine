@@ -123,9 +123,10 @@ class BPlusTreeDeleteTest {
         assertThat(scanAllKeys(store, tree.rootPageId())).isEmpty();
         assertThat(tree.get(key(0))).isNull();
         assertThat(store.freedCount()).as("merges reclaimed pages on the way down").isPositive();
+        assertThat(heightBefore).as("the tree had grown a level").isGreaterThan(1);
         assertThat(heightOf(store, tree.rootPageId()))
-                .as("leaves merge, but the root does not collapse yet")
-                .isEqualTo(heightBefore);
+                .as("the root collapsed all the way back to a single leaf")
+                .isEqualTo(1);
         TreeInvariants.check(store, tree.rootPageId());
     }
 
@@ -233,5 +234,60 @@ class BPlusTreeDeleteTest {
         // Every page the walk reaches must still exist; a stale child pointer throws here.
         TreeInvariants.check(store, tree.rootPageId());
         assertThat(scanAllKeys(store, tree.rootPageId())).hasSize(50);
+    }
+
+    @Test
+    void aThreeLevelTreeCollapsesBackToOneLeaf() {
+        HeapPageStore store = new HeapPageStore();
+        BPlusTree tree = treeWith(store, 2_000, 900); // about four to a leaf, so this reaches 3 levels
+        int rootId = tree.rootPageId();
+        assertThat(heightOf(store, rootId)).isGreaterThanOrEqualTo(3);
+
+        for (int i = 0; i < 2_000; i++) {
+            assertThat(tree.delete(key(i))).as("key %d", i).isTrue();
+        }
+
+        assertThat(tree.rootPageId()).as("the root id never changes, growing or shrinking")
+                .isEqualTo(rootId);
+        assertThat(heightOf(store, rootId)).isEqualTo(1);
+        assertThat(store.pageCount()).as("only the root is left").isEqualTo(1);
+        TreeInvariants.check(store, rootId);
+    }
+
+    @Test
+    void aCollapsedTreeCanGrowAgain() {
+        HeapPageStore store = new HeapPageStore();
+        BPlusTree tree = treeWith(store, 800, 900);
+        for (int i = 0; i < 800; i++) {
+            tree.delete(key(i));
+        }
+        assertThat(heightOf(store, tree.rootPageId())).isEqualTo(1);
+
+        for (int i = 0; i < 800; i++) {
+            tree.put(key(i), value(i, 900));
+        }
+
+        assertThat(heightOf(store, tree.rootPageId())).isGreaterThanOrEqualTo(2);
+        assertThat(scanAllKeys(store, tree.rootPageId())).hasSize(800);
+        for (int i = 0; i < 800; i++) {
+            assertThat(tree.get(key(i))).as("key %d", i).containsExactly(value(i, 900));
+        }
+        TreeInvariants.check(store, tree.rootPageId());
+    }
+
+    @Test
+    void heightShrinksWhileTheTreeIsEmptied() {
+        HeapPageStore store = new HeapPageStore();
+        BPlusTree tree = treeWith(store, 1_200, 900);
+        int tallest = heightOf(store, tree.rootPageId());
+
+        for (int i = 0; i < 1_200; i++) {
+            tree.delete(key(i));
+            int height = heightOf(store, tree.rootPageId());
+            assertThat(height).as("height never grows during deletes").isLessThanOrEqualTo(tallest);
+            tallest = height;
+        }
+
+        assertThat(tallest).isEqualTo(1);
     }
 }
