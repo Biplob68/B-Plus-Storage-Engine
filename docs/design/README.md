@@ -10,7 +10,7 @@ milestone of its own.
 |---|---------|--------|-----|
 | 0 | Bytes | Done | [00-bytes.md](00-bytes.md) |
 | 1 | SlottedPage | Done | [01-slotted-page.md](01-slotted-page.md) |
-| 2 | Pager | Not started | — |
+| 2 | Pager | Done | [02-pager.md](02-pager.md) |
 | 3 | BufferPool | Not started | — |
 | 4 | BPlusTree | Done | [04-bplus-insert.md](04-bplus-insert.md) · [04-bplus-delete.md](04-bplus-delete.md) · [04-bplus-scan.md](04-bplus-scan.md) |
 | 5 | Oracle harness | Not started | — |
