@@ -1,7 +1,6 @@
 package database.engine.bplus.page;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Objects;
 
 /**
@@ -31,8 +30,6 @@ public final class SlottedPage {
 
     public static final int MAX_CELL_SIZE = USABLE_BYTES / 4 - SLOT_SIZE;
 
-    private static final byte[] EMPTY_PAGE = new byte[Page.SIZE];
-
     private final ByteBuffer buffer;
     private final PageHeader header;
     private final SlotDirectory slots;
@@ -47,7 +44,7 @@ public final class SlottedPage {
 
 
     public static SlottedPage init(ByteBuffer buffer, PageType type) {
-        SlottedPage page = new SlottedPage(pageView(buffer));
+        SlottedPage page = new SlottedPage(PageBuffers.view(buffer));
         page.reset(type);
         return page;
     }
@@ -55,7 +52,7 @@ public final class SlottedPage {
 
     public void reset(PageType type) {
         Objects.requireNonNull(type, "type");
-        buffer.put(0, EMPTY_PAGE, 0, Page.SIZE);
+        PageBuffers.zero(buffer);
         header.type(type);
         header.cellAreaStart(Page.SIZE); // every other header field is zero
     }
@@ -64,21 +61,9 @@ public final class SlottedPage {
      * Opens a buffer that already holds a formatted page, leaving its bytes untouched.
      */
     public static SlottedPage wrap(ByteBuffer buffer) {
-        SlottedPage page = new SlottedPage(pageView(buffer));
+        SlottedPage page = new SlottedPage(PageBuffers.view(buffer));
         page.type(); // fail fast when this is not a formatted page
         return page;
-    }
-
-    private static ByteBuffer pageView(ByteBuffer buffer) {
-        Objects.requireNonNull(buffer, "buffer");
-        if (buffer.isReadOnly()) {
-            throw new IllegalArgumentException("page buffer must be writable");
-        }
-        if (buffer.capacity() != Page.SIZE) {
-            throw new IllegalArgumentException("capacity must be Page.SIZE, got " + buffer.capacity());
-        }
-        // clear(): absolute get/put bounds-check against the limit, not the capacity
-        return buffer.duplicate().clear().order(ByteOrder.BIG_ENDIAN);
     }
 
     //---------------------------- page state -----------------------------------
