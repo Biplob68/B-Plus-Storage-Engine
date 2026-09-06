@@ -86,7 +86,7 @@ final class InternalRebalance {
     private static void writeChildren(PageStore store, int pageId, List<Child> children) {
         SlottedPage page = store.get(pageId);
         try {
-            Child.writeAll(new InternalNode(page), children);
+            Child.rewriteAll(new InternalNode(page), children);
         } finally {
             store.release(pageId);
         }

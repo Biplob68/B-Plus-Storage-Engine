@@ -6,7 +6,7 @@ import database.engine.bplus.util.Bytes;
 import org.junit.jupiter.api.Test;
 
 import static database.engine.bplus.tree.TreeFixture.addSeparator;
-import static database.engine.bplus.tree.TreeFixture.chain;
+import static database.engine.bplus.tree.TreeFixture.linkSiblings;
 import static database.engine.bplus.tree.TreeFixture.internalOf;
 import static database.engine.bplus.tree.TreeFixture.key;
 import static database.engine.bplus.tree.TreeFixture.leafOf;
@@ -40,8 +40,8 @@ class TreeInvariantsTest {
         int a = leafOf(store, 10, 20);
         int b = leafOf(store, 30, 40);
         int c = leafOf(store, 50, 60);
-        chain(store, a, b);
-        chain(store, b, c);
+        linkSiblings(store, a, b);
+        linkSiblings(store, b, c);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 30, b);
@@ -56,7 +56,7 @@ class TreeInvariantsTest {
         HeapPageStore store = new HeapPageStore();
         int a = leafOf(store, 10, 20);
         int c = leafOf(store, 50, 60);
-        chain(store, a, c);
+        linkSiblings(store, a, c);
 
         int middle = internalOf(store, c); // extra level on the right only
         int rootId = internalOf(store, a);
@@ -72,7 +72,7 @@ class TreeInvariantsTest {
         HeapPageStore store = new HeapPageStore();
         int a = leafOf(store, 10, 20);
         int b = leafOf(store, 15, 40); // 15 belongs left of the separator 30
-        chain(store, a, b);
+        linkSiblings(store, a, b);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 30, b);
@@ -88,7 +88,7 @@ class TreeInvariantsTest {
         int a = leafOf(store, 10, 20);
         int b = leafOf(store, 30, 40);
         int c = leafOf(store, 50, 60);
-        chain(store, a, b);
+        linkSiblings(store, a, b);
         // b -> c is missing, which is what a split forgetting to rewire looks like
 
         int rootId = internalOf(store, a);
@@ -105,8 +105,8 @@ class TreeInvariantsTest {
         HeapPageStore store = new HeapPageStore();
         int a = leafOf(store, 10, 20);
         int b = leafOf(store, 30, 40);
-        chain(store, a, b);
-        chain(store, b, a); // what wiring the pointers in the wrong order produces
+        linkSiblings(store, a, b);
+        linkSiblings(store, b, a); // what wiring the pointers in the wrong order produces
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 30, b);

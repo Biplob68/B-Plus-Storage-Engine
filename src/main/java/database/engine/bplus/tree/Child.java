@@ -36,7 +36,7 @@ record Child(byte[] separator, int pageId) {
         return total;
     }
 
-    static void writeAll(InternalNode node, List<Child> children) {
+    static void rewriteAll(InternalNode node, List<Child> children) {
         node.clear();
         node.setLeftmostChild(children.get(0).pageId());
         for (int i = 1; i < children.size(); i++) {

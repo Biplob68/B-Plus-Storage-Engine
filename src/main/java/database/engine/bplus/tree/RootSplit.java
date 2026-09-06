@@ -10,8 +10,8 @@ final class RootSplit {
         throw new AssertionError("no instances");
     }
 
-    static void growNewRoot(PageStore store, int rootPageId, SplitResult split) {
-        int leftPageId = PageCopy.toNewPage(store, rootPageId);
+    static void grow(PageStore store, int rootPageId, SplitResult split) {
+        int leftPageId = PageCopy.copyToNewPage(store, rootPageId);
 
         SlottedPage rootPage = store.get(rootPageId);
         try {

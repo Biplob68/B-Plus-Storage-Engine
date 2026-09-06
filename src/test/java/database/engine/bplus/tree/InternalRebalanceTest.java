@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static database.engine.bplus.tree.TreeFixture.addSeparator;
-import static database.engine.bplus.tree.TreeFixture.chain;
+import static database.engine.bplus.tree.TreeFixture.linkSiblings;
 import static database.engine.bplus.tree.TreeFixture.internalOf;
 import static database.engine.bplus.tree.TreeFixture.key;
 import static database.engine.bplus.tree.TreeFixture.keysOf;
@@ -62,9 +62,9 @@ class InternalRebalanceTest {
         int leaf2 = leafOf(store, 30);
         int leaf3 = leafOf(store, 50);
         int leaf4 = leafOf(store, 70);
-        chain(store, leaf1, leaf2);
-        chain(store, leaf2, leaf3);
-        chain(store, leaf3, leaf4);
+        linkSiblings(store, leaf1, leaf2);
+        linkSiblings(store, leaf2, leaf3);
+        linkSiblings(store, leaf3, leaf4);
 
         int left = internalOf(store, leaf1);
         addSeparator(store, left, 30, leaf2);

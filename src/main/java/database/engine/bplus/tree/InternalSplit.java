@@ -47,8 +47,8 @@ final class InternalSplit {
                                       List<Child> children, int cut) {
         SlottedPage rightPage = store.get(rightPageId);
         try {
-            Child.writeAll(new InternalNode(rightPage), rightHalf(children, cut));
-            Child.writeAll(left, children.subList(0, cut));
+            Child.rewriteAll(new InternalNode(rightPage), rightHalf(children, cut));
+            Child.rewriteAll(left, children.subList(0, cut));
         } finally {
             store.release(rightPageId);
         }

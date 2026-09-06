@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Random;
 
 import static database.engine.bplus.tree.TreeFixture.addSeparator;
-import static database.engine.bplus.tree.TreeFixture.chain;
+import static database.engine.bplus.tree.TreeFixture.linkSiblings;
 import static database.engine.bplus.tree.TreeFixture.internalOf;
 import static database.engine.bplus.tree.TreeFixture.key;
 import static database.engine.bplus.tree.TreeFixture.leafOf;
@@ -21,7 +21,7 @@ class BPlusTreeSplitTest {
     private static BPlusTree twoLevelTree(HeapPageStore store) {
         int a = leafOf(store);
         int b = leafOf(store, 1000);
-        chain(store, a, b);
+        linkSiblings(store, a, b);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 1000, b);

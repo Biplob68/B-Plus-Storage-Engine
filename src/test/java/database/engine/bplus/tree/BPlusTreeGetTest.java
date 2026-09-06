@@ -5,7 +5,7 @@ import database.engine.bplus.page.SlottedPage;
 import org.junit.jupiter.api.Test;
 
 import static database.engine.bplus.tree.TreeFixture.addSeparator;
-import static database.engine.bplus.tree.TreeFixture.chain;
+import static database.engine.bplus.tree.TreeFixture.linkSiblings;
 import static database.engine.bplus.tree.TreeFixture.internalOf;
 import static database.engine.bplus.tree.TreeFixture.key;
 import static database.engine.bplus.tree.TreeFixture.leafOf;
@@ -61,8 +61,8 @@ class BPlusTreeGetTest {
         int a = leafOf(store, 10, 20);
         int b = leafOf(store, 30, 40);
         int c = leafOf(store, 50, 60);
-        chain(store, a, b);
-        chain(store, b, c);
+        linkSiblings(store, a, b);
+        linkSiblings(store, b, c);
 
         int rootId = internalOf(store, a);
         addSeparator(store, rootId, 30, b);
