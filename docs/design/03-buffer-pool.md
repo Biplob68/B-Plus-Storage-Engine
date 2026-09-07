@@ -337,72 +337,158 @@ Frame 2 -> Page 8  dirty
 
 ## Eviction
 
-When no free frame is left, the pool takes one back.
+The pool has a few frames. The tree has a whole file of pages. Sooner or later every frame is
+taken and the tree asks for one more.
+
+Eviction is what happens then: put one page back, use its frame for the new one.
+
+---
+
+### The desk
 
 ```text
-need a frame
-      |
-      v
-freeFrames empty?
-      |
-      no ---> take it, costs nothing
-      |
-     yes
-      |
-      v
-evictable empty?
-      |
-     yes ---> "buffer pool is full: all N frames are pinned"
-      |
-      no
-      |
-      v
-take the front of the queue
-      |
-      v
-dirty? ---> yes ---> write it to the Pager
-      |
-      no
-      |
-      v
-drop it from residentFrames
-      |
-      v
-reuse the frame
+disk  = a big bookshelf, 1000 books
+pool  = a small desk, only 3 books fit
 ```
 
-The victim is always the page released **longest ago**.
+A book must be on the desk before I can read it.
+
+```text
+take book 2     [2][ ][ ]
+take book 5     [2][5][ ]
+take book 8     [2][5][8]   <- desk full
+```
+
+Now I need book 9. There is no space, so one book goes back to the shelf.
+
+```text
+[2][5][8]   ->   [9][5][8]
+ ^
+ back to the shelf
+```
+
+That is eviction. Nothing more.
+
+---
+
+### Which page goes back
+
+The one I finished with longest ago.
 
 ```text
 evictable
-front                                back
+front                              back
 [ Page 2 , Page 5 , Page 8 ]
-   ^                          
-   evicted first
+   ^
+   goes first
 ```
 
-Borrowing a page pulls it out of the queue. Releasing it puts it at the back. So a page in steady
-use keeps moving away from the front and is the last thing to go.
+Picking a page up takes it out of the queue. Putting it down adds it to the back.
 
 ```text
 get(2)      evictable: [ Page 5 , Page 8 ]
 release(2)  evictable: [ Page 5 , Page 8 , Page 2 ]
 ```
 
-### What eviction costs
+So a page I keep using keeps moving away from the front. It is the last one to go.
 
-| Victim | Cost |
-|--------|------|
-| clean | nothing. The file already holds those bytes |
-| dirty | one write, before the frame is handed over |
+---
+
+### One question before it goes back
+
+Did I write in it?
+
+```text
+only read it   ->  drop it. The file already has these bytes. Free.
+wrote in it    ->  write it to the file first. Costs one write.
+```
+
+That is the dirty flag.
 
 ```text
 Frame 0 -> Page 2  clean  ->  just drop it
 Frame 1 -> Page 5  dirty  ->  write Page 5, then drop it
 ```
 
-The clean case is the one to be careful about. Writing a clean frame back looks harmless, but it is
-not: the file may have moved on, and the pool would push a stale copy over it.
+A clean page must **not** be written back. It looks harmless, but the file may have moved on, and
+the write would push an old copy over the new one.
+
+---
+
+### A page in use is never taken
+
+If my hand is still on the book, nobody can take it.
+
+```text
+pinCount > 0  ->  in use, cannot be taken
+pinCount = 0  ->  finished with, can be taken
+```
+
+This is not a check. A pinned frame is never put in the `evictable` queue, and the queue is the
+only place victims come from. There is no branch that could forget it.
+
+That matters because `get` hands back a page pointing straight at the frame's buffer, not a copy.
+Taking a frame someone still holds would quietly point their page at different bytes. Nothing would
+throw. The wrong data would just turn up later.
+
+---
+
+### The whole thing
+
+```text
+need a frame
+      |
+      v
+any free frame?  -- yes -->  take it. Free.
+      |
+      no
+      |
+      v
+any unused page? -- no  -->  "buffer pool is full: all N frames are pinned"
+      |
+      yes
+      |
+      v
+take the one finished with longest ago
+      |
+      v
+   dirty?  -- yes -->  write it to the file
+      |
+      no
+      |
+      v
+reuse the frame
+```
+
+---
+
+### When it still refuses
+
+```text
+all 8 frames pinned
+        +
+allocate()
+        |
+        v
+"buffer pool is full: all 8 frames are pinned"
+```
+
+Every frame borrowed and nothing given back means the tree wants more pages at once than the pool
+holds. That is a real bug, or a pool built too small. It fails loudly instead of corrupting a page.
+
+---
+
+### The words
+
+| Desk | Code |
+|------|------|
+| desk slot | frame |
+| holding a book | pinned |
+| wrote in it | dirty |
+| put a book back | evict |
+| copy writing to the shelf | write to the file |
+
+---
 
 ### What is still missing
 
