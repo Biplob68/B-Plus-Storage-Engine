@@ -2,6 +2,8 @@ package database.engine.bplus.store;
 
 import database.engine.bplus.page.MetaPage;
 import database.engine.bplus.page.Page;
+import database.engine.bplus.page.PageType;
+import database.engine.bplus.page.SlottedPage;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -19,6 +21,7 @@ import java.nio.file.StandardOpenOption;
  *   ┌──────────┬──────────┬──────────┬──────────┬─────
  *   │  page 0  │  page 1  │  page 2  │  page 3  │ ...
  *   │   meta   │   root   │          │          │
+ *   │          │  (leaf)  │          │          │
  *   └──────────┴──────────┴──────────┴──────────┴─────
  *   0         4096       8192      12288      16384
  * </pre>
@@ -58,8 +61,15 @@ public final class Pager implements AutoCloseable {
 
         Pager pager = new Pager(channel, metaBuffer, meta);
         pager.writePage(META_PAGE_ID, metaBuffer);
-        pager.writePage(ROOT_PAGE_ID, ByteBuffer.allocate(Page.SIZE));
+        pager.writePage(ROOT_PAGE_ID, emptyLeaf());
         return pager;
+    }
+
+
+    private static ByteBuffer emptyLeaf() {
+        ByteBuffer buffer = ByteBuffer.allocate(Page.SIZE);
+        SlottedPage.init(buffer, PageType.LEAF);
+        return buffer;
     }
 
     private static Pager openExisting(FileChannel channel) throws IOException {
