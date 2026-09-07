@@ -1,59 +1,55 @@
-# Design docs
+﻿# Design docs
 
-One doc per feature. I write it after the feature is done and the tests are green, so it describes
-what I actually built, not what I planned to build.
+This project is building a storage engine around a B+ tree: a sorted map of byte-array keys and values.
 
-The numbers match the milestones. Number 0 is the shared foundation both layers sit on, not a
-milestone of its own.
+Start with the page layout, then read about the tree. The byte helpers explain how numbers and keys are stored.
 
-| # | Feature | Status | Doc |
-|---|---------|--------|-----|
-| 0 | Bytes | Done | [00-bytes.md](00-bytes.md) |
-| 1 | SlottedPage | Done | [01-slotted-page.md](01-slotted-page.md) |
-| 2 | Pager | Done | [02-pager.md](02-pager.md) |
-| 3 | BufferPool | Not started | — |
-| 4 | BPlusTree | Done | [04-bplus-insert.md](04-bplus-insert.md) · [04-bplus-delete.md](04-bplus-delete.md) · [04-bplus-scan.md](04-bplus-scan.md) |
-| 5 | Oracle harness | Not started | — |
-| 6 | COW durability | Not started | — |
-| 7 | Latch crabbing | Not started | — |
-| 8 | Benchmarks | Not started | — |
+## Reading order
 
-## What goes in a doc
+| Doc | What you will learn |
+|---|---|
+| [Bytes](00-bytes.md) | Key ordering and number encoding |
+| [Slotted pages](01-slotted-page.md) | How one 4 KB page stores records |
+| [Pager](02-pager.md) | How pages are read from and written to a file |
+| [Tree lookup and insertion](04-bplus-insert.md) | How the tree finds keys and grows |
+| [Tree deletion](04-bplus-delete.md) | How the tree removes keys and shrinks |
+| [Range scans](04-bplus-scan.md) | How to read keys in order |
 
-What the feature is, and how it works. Enough that I can follow it later without reading the
-source.
+## How the pieces fit
 
-That means the byte layout, what each operation does step by step, and a worked example with real
-bytes and real offsets. Layouts are slow to work out again from code. Examples catch the things a
-description hides.
-
-Keep everything else short. Limits, errors, missing pieces: one table each.
-
-Leave out anything the code already says. No walking through methods one by one, no repeating
-method signatures in words, no long argument about designs I did not pick.
-
-Write in plain, short sentences.
-
-## Template
-
-```markdown
-# N. <Feature>
-
-## What it is
-Two or three sentences.
-
-## Why it is built this way
-The problem that forced this shape. Keep it short.
-
-## Layout
-Diagram, field table, formats.
-
-## Example
-Real bytes at real offsets.
-
-## How it works
-One section per operation. The steps, the cost, and the bytes before and after where it helps.
-
-## Classes
-Which class owns which part.
+```text
+BPlusTree: get, put, delete, scan
+    |
+PageStore: allocate, get, release, free
+    |
+    +-- HeapPageStore: available in tests
+    |
+    +-- BufferPool: planned connection to Pager
+                                |
+                             disk file
 ```
+
+The tree works through the `PageStore` interface. The disk pager exists, but there is no production
+implementation connecting it to the tree yet. The tree tests use pages held in memory.
+
+## Milestones
+
+These statuses describe the implementation, not the result of a new test run.
+
+| # | Feature | Status |
+|---|---|---|
+| 0 | Byte helpers | Implemented |
+| 1 | Slotted pages | Implemented |
+| 2 | Disk pager | Implemented |
+| 3 | Buffer pool | Not started |
+| 4 | B+ tree lookup, insertion, deletion, and scans | Implemented against PageStore |
+| 5 | Broader oracle harness: compare operations with a reference map | Not started; some randomized tests already exist |
+| 6 | Copy-on-write crash durability | Not started |
+| 7 | Latch crabbing: coordinate access while moving through the tree | Not started |
+| 8 | Benchmarks | Not started |
+
+## Writing these docs
+
+Explain the current behavior in short sentences. Define unfamiliar terms before using them.
+Keep byte layouts and worked examples where they help. Label decimal offsets and hexadecimal bytes
+clearly. Separate implemented behavior from planned work.
