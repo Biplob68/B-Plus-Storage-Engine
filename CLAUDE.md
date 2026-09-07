@@ -12,7 +12,7 @@ I am building this to LEARN, not only to ship.
 ## Working agreement
 - Do NOT write or edit code unless I explicitly say.
 - When I ask you to teach, do not write code — prose and worked examples only.
-- Run `mvn -q test` before claiming any task is done.
+- Run `./gradlew test` before claiming any task is done.
 - Small commits, each with a passing build.
 - Follow .claude/skills/clean-code on every commit and every doc: meaningful naming, small
   methods, single responsibility, comments only where the code cannot speak for itself, and

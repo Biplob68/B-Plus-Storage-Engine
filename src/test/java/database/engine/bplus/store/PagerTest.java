@@ -2,6 +2,8 @@ package database.engine.bplus.store;
 
 import database.engine.bplus.page.MetaPage;
 import database.engine.bplus.page.Page;
+import database.engine.bplus.page.PageType;
+import database.engine.bplus.page.SlottedPage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -54,6 +56,33 @@ class PagerTest {
         }
 
         assertThat(Files.size(file)).isEqualTo(2L * Page.SIZE);
+    }
+
+    @Test
+    void theRootPageOfANewFileIsAnEmptyLeaf() {
+        try (Pager pager = Pager.open(dbFile())) {
+            SlottedPage root = SlottedPage.wrap(readPageOf(pager, Pager.ROOT_PAGE_ID));
+
+            assertThat(root.type()).isEqualTo(PageType.LEAF);
+            assertThat(root.cellCount()).isZero();
+            assertThat(root.freeSpace())
+                    .as("a zeroed page would wrap as a leaf too, but with no room in it")
+                    .isEqualTo(SlottedPage.USABLE_BYTES);
+        }
+    }
+
+    @Test
+    void theRootPageIsStillUsableAfterAReopen() {
+        Path file = dbFile();
+        try (Pager pager = Pager.open(file)) {
+            assertThat(pager.rootPageId()).isEqualTo(Pager.ROOT_PAGE_ID);
+        }
+
+        try (Pager reopened = Pager.open(file)) {
+            SlottedPage root = SlottedPage.wrap(readPageOf(reopened, Pager.ROOT_PAGE_ID));
+
+            assertThat(root.hasSpaceFor(4, 4)).isTrue();
+        }
     }
 
     @Test

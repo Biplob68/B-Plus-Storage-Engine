@@ -69,6 +69,21 @@ class BufferPoolTest {
     }
 
     @Test
+    void theRootPageThePagerReservedCanBeBorrowedStraightAway() {
+        try (Pager pager = pager()) {
+            BufferPool pool = BufferPool.of(pager, SMALL_POOL);
+
+            SlottedPage root = pool.get(Pager.ROOT_PAGE_ID);
+            try {
+                root.insertCell(0, key(1), key(10));
+                assertThat(root.type()).isEqualTo(PageType.LEAF);
+            } finally {
+                pool.release(Pager.ROOT_PAGE_ID);
+            }
+        }
+    }
+
+    @Test
     void allocatedIdsComeFromThePagerAndSkipTheMetaAndRootPages() {
         try (Pager pager = pager()) {
             BufferPool pool = BufferPool.of(pager, SMALL_POOL);

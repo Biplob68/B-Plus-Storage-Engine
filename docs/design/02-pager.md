@@ -41,6 +41,7 @@ header and produce nonsense instead of an error.
   ┌──────────┬──────────┬──────────┬──────────┬──────────┬─────
   │  page 0  │  page 1  │  page 2  │  page 3  │  page 4  │ ...
   │   meta   │   root   │          │          │          │
+  │          │  (leaf)  │          │          │          │
   └──────────┴──────────┴──────────┴──────────┴──────────┴─────
   0        4096       8192      12288      16384      20480
 
@@ -52,6 +53,7 @@ Two things are fixed forever:
 - Page 0 is the meta page.
 - Page 1 is the root. The tree keeps its root page id when it grows and when it collapses, so this
   is written once at format time and never changes.
+- Page 1 always holds a real page, not zeroes. A new file gets an empty leaf there.
 
 ### The meta page
 
@@ -93,7 +95,25 @@ file size >  0  ->  open it
 ```
 
 **Create.** Build a meta page in memory with `rootPageId = 1` and `pageCount = 2`. Write it at
-offset 0. Write a zeroed page at offset 4096 for the root. The file is now 8192 bytes and valid.
+offset 0. Write an empty leaf at offset 4096 for the root. The file is now 8192 bytes and valid.
+
+I format that root page instead of zeroing it because a zeroed page is not an empty page:
+
+```text
+zeroed page          empty leaf
+-----------          ----------
+type byte   = 0      type byte     = 0     both read as LEAF
+cellCount   = 0      cellCount     = 0
+cellAreaStart = 0    cellAreaStart = 4096
+      |                    |
+      v                    v
+free space = -24     free space = 4072
+```
+
+A zeroed page passes every check `SlottedPage.wrap` makes, because type code 0 really is `LEAF`. It
+only goes wrong later, when the first insert into an empty tree fails with "page full". Writing the
+page properly at format time turns "page 1 is a valid empty leaf" into part of the file format,
+next to "page 0 is the meta page".
 
 **Open.** Read 4096 bytes from offset 0 and hand them to `MetaPage.open`, which checks magic,
 version, and page size. Then check the file is at least `pageCount * Page.SIZE` bytes long. If it
