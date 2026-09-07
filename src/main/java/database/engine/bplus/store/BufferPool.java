@@ -175,6 +175,15 @@ public final class BufferPool implements PageStore {
         return frame;
     }
 
+
+    public int borrowedCount() {
+        int borrowed = 0;
+        for (Frame frame : frames) {
+            borrowed += frame.pinCount();
+        }
+        return borrowed;
+    }
+
     boolean isResident(int pageId) {
         return residentFrames.containsKey(pageId);
     }
