@@ -12,12 +12,7 @@ import static database.engine.bplus.tree.TreeFixture.key;
 import static database.engine.bplus.tree.TreeFixture.value;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The same tree scenarios, run against every {@link PageStore}.
- *
- * <p>On a heap store a page is always there. On a pool it can be evicted and read back in the
- * middle of a split, so a page held wrongly, or released twice, only shows up here.
- */
+
 abstract class TreeStoreContractTest {
 
     /**
