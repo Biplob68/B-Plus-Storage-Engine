@@ -33,6 +33,12 @@ class BufferPoolTest {
         return SlottedPage.wrap(buffer);
     }
 
+    private static void fillPool(BufferPool pool, int pageCount) {
+        for (int i = 0; i < pageCount; i++) {
+            pool.allocate(PageType.LEAF);
+        }
+    }
+
     private static int allocateWith(BufferPool pool, PageType type, byte[] key, byte[] value) {
         int pageId = pool.allocate(type);
         SlottedPage page = pool.get(pageId);
@@ -189,32 +195,142 @@ class BufferPoolTest {
     }
 
     @Test
-    void aFullPoolIsRefusedRatherThanEvictingSomething() {
+    void whenEveryFrameIsPinnedThePoolRefusesRatherThanTakingOneBack() {
         try (Pager pager = pager()) {
             BufferPool pool = BufferPool.of(pager, SMALL_POOL);
             for (int i = 0; i < SMALL_POOL; i++) {
-                pool.allocate(PageType.LEAF);
+                pool.get(pool.allocate(PageType.LEAF));
             }
 
             assertThatThrownBy(() -> pool.allocate(PageType.LEAF))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("buffer pool is full");
+                    .hasMessageContaining("all " + SMALL_POOL + " frames are pinned");
         }
     }
 
     @Test
-    void freeingGivesTheFrameBackForReuse() {
+    void aFullPoolGivesUpThePageThatWasReleasedLongestAgo() {
         try (Pager pager = pager()) {
             BufferPool pool = BufferPool.of(pager, SMALL_POOL);
-            int firstPageId = pool.allocate(PageType.LEAF);
-            for (int i = 1; i < SMALL_POOL; i++) {
-                pool.allocate(PageType.LEAF);
+            int oldest = pool.allocate(PageType.LEAF);
+            fillPool(pool, SMALL_POOL - 1);
+
+            int oneTooMany = pool.allocate(PageType.LEAF);
+
+            assertThat(pool.isResident(oldest)).isFalse();
+            assertThat(pool.isResident(oneTooMany)).isTrue();
+        }
+    }
+
+    @Test
+    void aChangedVictimReachesTheFileBeforeItsFrameIsReused() {
+        try (Pager pager = pager()) {
+            BufferPool pool = BufferPool.of(pager, SMALL_POOL);
+            int pageId = allocateWith(pool, PageType.LEAF, key(7), key(70));
+            assertThat(pool.isDirty(pageId)).isTrue();
+
+            fillPool(pool, SMALL_POOL);
+
+            assertThat(pool.isResident(pageId)).isFalse();
+            assertThat(pageFromFile(pager, pageId).key(0))
+                    .as("evicting a changed page costs a write, and that write must happen")
+                    .containsExactly(key(7));
+        }
+    }
+
+    @Test
+    void anUnchangedVictimIsDroppedWithoutBeingWrittenBack() {
+        try (Pager pager = pager()) {
+            BufferPool pool = BufferPool.of(pager, SMALL_POOL);
+            int pageId = allocateWith(pool, PageType.LEAF, key(1), key(10));
+            pool.flush();
+
+            // Change the file behind the pool's back. Its frame still holds the old page, clean.
+            ByteBuffer replacement = ByteBuffer.allocate(Page.SIZE);
+            SlottedPage.init(replacement, PageType.LEAF).insertCell(0, key(2), key(20));
+            pager.writePage(pageId, replacement);
+
+            fillPool(pool, SMALL_POOL);
+            SlottedPage back = pool.get(pageId);
+            try {
+                assertThat(back.key(0))
+                        .as("writing a clean frame back would have clobbered the file")
+                        .containsExactly(key(2));
+            } finally {
+                pool.release(pageId);
+            }
+        }
+    }
+
+    @Test
+    void anEvictedPageComesBackFromTheFileUnchanged() {
+        try (Pager pager = pager()) {
+            BufferPool pool = BufferPool.of(pager, SMALL_POOL);
+            int pageId = allocateWith(pool, PageType.LEAF, key(3), key(30));
+            fillPool(pool, SMALL_POOL);
+            assertThat(pool.isResident(pageId)).isFalse();
+
+            SlottedPage back = pool.get(pageId);
+            try {
+                assertThat(back.key(0)).containsExactly(key(3));
+                assertThat(back.value(0)).containsExactly(key(30));
+            } finally {
+                pool.release(pageId);
+            }
+        }
+    }
+
+    @Test
+    void aBorrowedPageIsNeverChosenAsAVictim() {
+        try (Pager pager = pager()) {
+            BufferPool pool = BufferPool.of(pager, SMALL_POOL);
+            int borrowed = pool.allocate(PageType.LEAF);
+            pool.get(borrowed);
+            int idle = pool.allocate(PageType.LEAF);
+
+            fillPool(pool, SMALL_POOL);
+
+            assertThat(pool.isResident(borrowed)).as("someone is still holding it").isTrue();
+            assertThat(pool.isResident(idle)).isFalse();
+            pool.release(borrowed);
+        }
+    }
+
+    @Test
+    void usingAPageAgainMovesItToTheBackOfTheQueue() {
+        try (Pager pager = pager()) {
+            BufferPool pool = BufferPool.of(pager, SMALL_POOL);
+            int touchedAgain = pool.allocate(PageType.LEAF);
+            int leftAlone = pool.allocate(PageType.LEAF);
+
+            pool.get(touchedAgain);
+            pool.release(touchedAgain);
+            fillPool(pool, SMALL_POOL - 1);
+
+            assertThat(pool.isResident(leftAlone)).as("its release is now the oldest").isFalse();
+            assertThat(pool.isResident(touchedAgain)).isTrue();
+        }
+    }
+
+    @Test
+    void aFreedFrameIsReusedBeforeAnythingIsEvicted() {
+        try (Pager pager = pager()) {
+            BufferPool pool = BufferPool.of(pager, SMALL_POOL);
+            int freed = pool.allocate(PageType.LEAF);
+            int[] borrowed = new int[SMALL_POOL - 1];
+            for (int i = 0; i < borrowed.length; i++) {
+                borrowed[i] = pool.allocate(PageType.LEAF);
+                pool.get(borrowed[i]);
             }
 
-            pool.free(firstPageId);
+            pool.free(freed);
+            int reused = pool.allocate(PageType.LEAF);
 
-            assertThat(pool.isResident(firstPageId)).isFalse();
-            assertThat(pool.allocate(PageType.LEAF)).as("the freed frame is reused").isPositive();
+            assertThat(pool.isResident(freed)).isFalse();
+            assertThat(pool.isResident(reused)).as("it took the freed frame, not a borrowed one").isTrue();
+            for (int pageId : borrowed) {
+                pool.release(pageId);
+            }
         }
     }
 
@@ -280,8 +396,9 @@ class BufferPoolTest {
 
             assertThatThrownBy(() -> pool.get(99)).isInstanceOf(IllegalArgumentException.class);
 
+            // A leaked frame would leave room for only seven, so the last of these would fail.
             for (int i = 0; i < SMALL_POOL; i++) {
-                pool.allocate(PageType.LEAF);
+                pool.get(pool.allocate(PageType.LEAF));
             }
         }
     }

@@ -119,11 +119,25 @@ pageId -> Frame
 
 freeFrames
 [ Frame 3, ... ]
+
+evictable
+oldest release -> [ Frame 1, Frame 2 ] <- newest release
 ```
 
 - `frames[]` → all RAM frames
 - `residentFrames` → quickly finds which frame contains a page
 - `freeFrames` → unused frames available for new pages
+- `evictable` → unpinned frames, oldest release first. The queue eviction picks from
+
+A frame is in `freeFrames`, or in `evictable`, or in neither. Never in both.
+
+```text
+pinCount = 0  ->  in evictable   (can be taken)
+pinCount > 0  ->  in neither     (cannot be taken)
+holds nothing ->  in freeFrames
+```
+
+A pinned frame is not in the queue at all. That is what makes it impossible to evict.
 
 ---
 
@@ -282,6 +296,17 @@ pin = 0
 
 The current implementation also marks the page dirty on release because the pool cannot know whether the caller only read or modified the page.
 
+When the last caller releases a page, its frame joins the **back** of `evictable`.
+
+```text
+release(7)
+  |
+pin = 0
+  |
+  v
+evictable: [ ... , Frame of 7 ]
+```
+
 ---
 
 ## `flush()`
@@ -310,24 +335,81 @@ Frame 2 -> Page 8  dirty
 
 ---
 
-## Current limitation
+## Eviction
 
-There is no eviction yet.
+When no free frame is left, the pool takes one back.
 
 ```text
-Frame 0 -> Page 2
-Frame 1 -> Page 3
-Frame 2 -> Page 4
-
-All frames occupied
-        +
-tree asks for Page 10
-        |
-        v
-"buffer pool is full"
+need a frame
+      |
+      v
+freeFrames empty?
+      |
+      no ---> take it, costs nothing
+      |
+     yes
+      |
+      v
+evictable empty?
+      |
+     yes ---> "buffer pool is full: all N frames are pinned"
+      |
+      no
+      |
+      v
+take the front of the queue
+      |
+      v
+dirty? ---> yes ---> write it to the Pager
+      |
+      no
+      |
+      v
+drop it from residentFrames
+      |
+      v
+reuse the frame
 ```
 
-Later, eviction can choose an unused frame (`pinCount = 0`) and reuse it.
+The victim is always the page released **longest ago**.
+
+```text
+evictable
+front                                back
+[ Page 2 , Page 5 , Page 8 ]
+   ^                          
+   evicted first
+```
+
+Borrowing a page pulls it out of the queue. Releasing it puts it at the back. So a page in steady
+use keeps moving away from the front and is the last thing to go.
+
+```text
+get(2)      evictable: [ Page 5 , Page 8 ]
+release(2)  evictable: [ Page 5 , Page 8 , Page 2 ]
+```
+
+### What eviction costs
+
+| Victim | Cost |
+|--------|------|
+| clean | nothing. The file already holds those bytes |
+| dirty | one write, before the frame is handed over |
+
+```text
+Frame 0 -> Page 2  clean  ->  just drop it
+Frame 1 -> Page 5  dirty  ->  write Page 5, then drop it
+```
+
+The clean case is the one to be careful about. Writing a clean frame back looks harmless, but it is
+not: the file may have moved on, and the pool would push a stale copy over it.
+
+### What is still missing
+
+There is no free page list, so a freed page id is abandoned and the file only grows.
+
+`flush()` will also write a page that is currently pinned. Single threaded this cannot bite, because
+flush only runs between operations.
 
 ---
 
