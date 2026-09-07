@@ -14,8 +14,9 @@ I am building this to LEARN, not only to ship.
 - When I ask you to teach, do not write code — prose and worked examples only.
 - Run `mvn -q test` before claiming any task is done.
 - Small commits, each with a passing build.
-- Follow .claude/skills/clean-code on every commit: meaningful naming, small methods,
-  single responsibility, comments only where the code cannot speak for itself.
+- Follow .claude/skills/clean-code on every commit and every doc: meaningful naming, small
+  methods, single responsibility, comments only where the code cannot speak for itself, and
+  docs in my voice - plain, not formal, diagrams instead of paragraphs.
 - After a feature is complete and green, write its design doc in docs/design/NN-feature.md.
   Follow docs/design/README.md: what the feature is and how it works, byte layout, a worked
   example with real bytes. Not a walkthrough of the code.

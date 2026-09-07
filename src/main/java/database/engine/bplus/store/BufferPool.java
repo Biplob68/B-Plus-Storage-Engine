@@ -8,8 +8,11 @@ import database.engine.bplus.tree.PageStore;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * A fixed set of page-sized frames sitting between the tree and the file.
@@ -34,6 +37,8 @@ public final class BufferPool implements PageStore {
     private final Frame[] frames;
     private final Map<Integer, Frame> residentFrames = new HashMap<>();
     private final Deque<Frame> freeFrames = new ArrayDeque<>();
+
+    private final Set<Frame> evictable = new LinkedHashSet<>();
 
     private BufferPool(Pager pager, int frameCount) {
         this.pager = pager;
@@ -72,6 +77,7 @@ public final class BufferPool implements PageStore {
         SlottedPage.init(frame.buffer(), type);
         frame.markDirty();
         residentFrames.put(pageId, frame);
+        evictable.add(frame);
         return pageId;
     }
 
@@ -80,6 +86,8 @@ public final class BufferPool implements PageStore {
         Frame frame = residentFrames.get(pageId);
         if (frame == null) {
             frame = readThrough(pageId);
+        } else if (!frame.isPinned()) {
+            evictable.remove(frame);
         }
         frame.pin();
         return SlottedPage.wrap(frame.buffer());
@@ -91,6 +99,9 @@ public final class BufferPool implements PageStore {
         frame.unpin();
         // get hands out a writable page, so the pool cannot tell a read from a write.
         frame.markDirty();
+        if (!frame.isPinned()) {
+            evictable.add(frame);
+        }
     }
 
     @Override
@@ -103,15 +114,13 @@ public final class BufferPool implements PageStore {
             throw new IllegalStateException("page " + pageId + " is still borrowed and cannot be freed");
         }
         residentFrames.remove(pageId);
+        evictable.remove(frame);
         giveBack(frame);
     }
 
     public void flush() {
         for (Frame frame : frames) {
-            if (frame.isDirty()) {
-                pager.writePage(frame.pageId(), frame.buffer());
-                frame.markClean();
-            }
+            writeBack(frame);
         }
     }
 
@@ -135,10 +144,27 @@ public final class BufferPool implements PageStore {
 
     private Frame takeFreeFrame() {
         Frame frame = freeFrames.poll();
-        if (frame == null) {
-            throw new IllegalStateException("buffer pool is full: all " + frames.length + " frames are in use");
+        return frame != null ? frame : evict();
+    }
+
+    private Frame evict() {
+        Iterator<Frame> candidates = evictable.iterator();
+        if (!candidates.hasNext()) {
+            throw new IllegalStateException(
+                    "buffer pool is full: all " + frames.length + " frames are pinned");
         }
-        return frame;
+        Frame victim = candidates.next();
+        candidates.remove();
+        writeBack(victim);
+        residentFrames.remove(victim.pageId());
+        return victim;
+    }
+
+    private void writeBack(Frame frame) {
+        if (frame.isDirty()) {
+            pager.writePage(frame.pageId(), frame.buffer());
+            frame.markClean();
+        }
     }
 
     private Frame requireResident(int pageId) {
