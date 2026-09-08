@@ -1,4 +1,4 @@
-﻿# 4. Tree lookup and insertion
+# 4. Tree lookup and insertion
 
 `BPlusTree` combines pages into a sorted map of byte-array keys and values.
 Leaf pages hold records. Internal pages hold keys that direct searches to child pages.
@@ -22,7 +22,12 @@ The tree uses `PageStore`:
 Page IDs start at 1. Zero means no page in tree links.
 Every successful borrow must have a matching release.
 
-Tests use `HeapPageStore`. The disk pager exists separately; a production store is still planned.
+`HeapPageStore` holds pages in memory for tests. `BufferPool` implements the same interface over
+`Pager` for file storage. Shared contract tests exercise both stores.
+
+Use [Database.open(path)](03-database.md) for the full file-backed engine. It opens the root already
+reserved by the pager. `BPlusTree.create(store)` allocates a separate new root and does not update
+file metadata.
 
 ## Internal page layout
 

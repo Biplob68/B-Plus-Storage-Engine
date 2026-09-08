@@ -7,7 +7,7 @@
 Open a file, put keys in, get them back, close it. Everything below is wiring.
 
 ```text
-Database.open("my.db")
+Database.open(Path.of("my.db"))
     |
     +-- BPlusTree    keys and values
     |       |
@@ -34,7 +34,7 @@ open                       close
 ----                       -----
 Pager.open(path)           pool.flush()      pages first
 BufferPool.of(pager)       pager.close()     meta page last
-BPlusTree.open(pool, 1)
+BPlusTree.open(pool, pager.rootPageId())
 ```
 
 ---
@@ -82,8 +82,9 @@ BufferPool over the pager
 BPlusTree on page 1
 ```
 
-If anything after `Pager.open` fails, the pager is closed before the error leaves. A half-open
-database is not handed back.
+If setup after `Pager.open` throws a runtime exception, `Database` attempts to close the pager.
+Cleanup can also fail and replace the original error. Failed opening inside `Pager.open` can
+still leave a channel open. A half-open database is not returned.
 
 ---
 
@@ -102,10 +103,18 @@ database.put(key, value)
    pool.get(pageId) ... pool.release(pageId)
         |
         v
-   frames in RAM        <- the file is not touched yet
+   frames in RAM        <- changes happen here
+        |
+        +-- allocation -> zero-filled page written by Pager
+        +-- eviction   -> dirty victim written before frame reuse
 ```
 
-Nothing reaches the file during a `put`. Pages are changed in frames and marked dirty.
+A `put` changes pages in RAM, but it can also write to disk when it allocates a page or evicts a
+dirty frame. Cache misses can read from disk during any tree operation.
+
+The pool marks every released page dirty because it hands out writable pages. Even a lookup or
+scan can therefore cause later write-back. Dirty means the page may have changed, not that the
+pool detected a change.
 
 ---
 
@@ -120,9 +129,10 @@ pager.close()    write the meta page, force, close the file
 
 The order is the point.
 
-The meta page carries `pageCount`. Writing it **last** means it can never claim pages the file does
-not hold yet. Writing it first would leave a window where the file says "I have 202 pages" and only
-holds 150.
+The pool writes its dirty pages before the pager writes metadata and forces the file to disk.
+Allocation has already extended the file with zero-filled pages; flushing writes their formatted
+contents. This order supports a clean close, but it does not make several page writes atomic or
+guarantee their persistence order during a crash.
 
 `sync()` does the same two steps but leaves the database open.
 
@@ -132,16 +142,17 @@ holds 150.
 
 | | Survives |
 |---|---|
-| `close()` | everything |
-| `sync()` | everything up to that point |
-| crash | everything up to the last `sync()` or `close()` |
+| Successful `close()` followed by reopen | Completed changes are written and the file is closed |
+| Successful `sync()` | Current dirty pages and metadata are written and forced; the database stays open |
+| Crash during later writes | No guaranteed recovery to the last sync |
 
-There is no WAL and no copy-on-write, so a crash mid-write can leave a page half written. I left
-durability out on purpose. That is milestone 6.
+There is no write-ahead log (WAL), copy-on-write, or recovery procedure. Later writes can overwrite
+pages that were saved by an earlier sync. A crash can leave a partial page or an inconsistent tree,
+so sync is not a snapshot that can be restored. Crash durability is milestone 6.
 
 ---
 
-## Example, measured
+## Example: sequential insertion
 
 4-byte keys, 200-byte values.
 
@@ -159,10 +170,12 @@ An internal page stores a separator and a child id instead:
 cell  = varint(4) + varint(4) + 4 + 4 = 10 bytes
 entry = cell + slot                   = 12 bytes
 
-one internal page points at 4072 / 12 = 339 children
+leftmost child entry = 8 bytes (empty key plus child ID and slot)
+remaining entries    = floor((4072 - 8) / 12) = 338
+children per page    = 1 + 338 = 339
 ```
 
-So the tree gets a third level somewhere between 3390 and 4000 keys. Both of these are real runs:
+For sequential ascending inserts with these key and value sizes, the layout is:
 
 | Keys | Pages in file | Leaves | Internal pages | Levels |
 |------|---------------|--------|----------------|--------|
@@ -183,8 +196,8 @@ At 4000 keys the 400 leaves no longer fit under 339, the root splits, and the tr
                       400 leaves
 ```
 
-Both numbers also mean the pool was evicting the whole time. It holds 64 frames and the file has
-202 or 404 pages.
+Both examples exceed the default pool of 64 frames, so insertion must evict pages once the cache
+fills. These counts depend on insertion order and record sizes; they are not general capacities.
 
 ---
 
@@ -196,8 +209,10 @@ Both numbers also mean the pool was evicting the whole time. It holds 64 frames 
 | File written by a newer format | `IllegalArgumentException` naming both versions |
 | Different page size | `IllegalArgumentException` naming both sizes |
 | File shorter than the meta page claims | `UncheckedIOException`, "truncated" |
-| Any use after `close()` | `IllegalStateException`, "database is closed" |
-| `close()` twice | Fine, the second one does nothing |
+| Calls to get, put, delete, scan, or sync after close | `IllegalStateException`, "database is closed" |
+| `close()` twice after success | The second call does nothing |
+| Pool flush fails during close | Close stops before closing the pager |
+| Pager close fails | Database is already marked closed; a later close does not retry |
 
 ---
 
@@ -209,6 +224,10 @@ Both numbers also mean the pool was evicting the whole time. It holds 64 frames 
 | Free page list | A merged-away page is abandoned, so the file only grows |
 | Choosing the pool size | `open` always uses 64 frames |
 | Concurrency | One thread. No locking anywhere |
+| Failure cleanup | Opening and closing can leave channels open on errors |
+
+A cursor returned before close has no database-lifecycle check. Do not use it after closing the
+database; copied or cached entries may still be readable until it needs a disk read.
 
 ---
 
@@ -222,7 +241,7 @@ Pager      = moves 4 KB blocks to and from disk
 ```
 
 ```text
-put  ->  change a page in RAM, mark it dirty
+put  ->  change pages in RAM; allocation or eviction may write to disk
 close ->  write the dirty pages, then the meta page
 open  ->  read the meta page, find the root at page 1
 ```

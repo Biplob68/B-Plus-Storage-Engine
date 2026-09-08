@@ -98,7 +98,7 @@ Frame
 | `buffer` | Actual page bytes |
 | `pageId` | Which page is currently in the frame |
 | `pinCount` | Number of callers currently using the page |
-| `dirty` | Page changed in RAM and must be written to disk |
+| `dirty` | Page may have changed and must be written back |
 
 ---
 
@@ -129,7 +129,8 @@ oldest release -> [ Frame 1, Frame 2 ] <- newest release
 - `freeFrames` → unused frames available for new pages
 - `evictable` → unpinned frames, oldest release first. The queue eviction picks from
 
-A frame is in `freeFrames`, or in `evictable`, or in neither. Never in both.
+During successful operations, a frame is free, evictable, or pinned. It is never both free and
+evictable. The failure-path limits below describe cases where this bookkeeping is not restored.
 
 ```text
 pinCount = 0  ->  in evictable   (can be taken)
@@ -182,7 +183,7 @@ This matters because `SlottedPage` directly wraps the frame's buffer.
 
 ## Dirty Page
 
-When a page changes in RAM:
+After allocation or release:
 
 ```text
 Frame 1 -> Page 7
@@ -192,7 +193,7 @@ dirty = true
 It means:
 
 ```text
-RAM version != Disk version
+RAM version may differ from Disk version
 ```
 
 Later:
@@ -399,19 +400,20 @@ So a page I keep using keeps moving away from the front. It is the last one to g
 Did I write in it?
 
 ```text
-only read it   ->  drop it. The file already has these bytes. Free.
-wrote in it    ->  write it to the file first. Costs one write.
+clean frame    ->  drop it without writing
+dirty frame    ->  write it to the file first
 ```
 
-That is the dirty flag.
+That is the dirty flag. The current pool marks every release dirty, including read-only borrows.
+A page is clean after a successful flush until it is released again.
 
 ```text
 Frame 0 -> Page 2  clean  ->  just drop it
 Frame 1 -> Page 5  dirty  ->  write Page 5, then drop it
 ```
 
-A clean page must **not** be written back. It looks harmless, but the file may have moved on, and
-the write would push an old copy over the new one.
+A clean page needs no write-back. Eviction skips that unnecessary I/O.
+Changing the file behind the pool or opening concurrent writers is not supported.
 
 ---
 
@@ -484,7 +486,7 @@ holds. That is a real bug, or a pool built too small. It fails loudly instead of
 |------|------|
 | desk slot | frame |
 | holding a book | pinned |
-| wrote in it | dirty |
+| may have written in it | dirty |
 | put a book back | evict |
 | copy writing to the shelf | write to the file |
 
@@ -494,8 +496,19 @@ holds. That is a real bug, or a pool built too small. It fails loudly instead of
 
 There is no free page list, so a freed page id is abandoned and the file only grows.
 
-`flush()` will also write a page that is currently pinned. Single threaded this cannot bite, because
-flush only runs between operations.
+`flush()` can write pinned frames. `Database` calls it between operations in the supported
+single-threaded flow. Direct pool callers must finish and release their changes before flushing.
+Flush writes frames through the pager; it does not call `force`. Use `Database.sync()` to flush
+frames and then sync the pager.
+
+Two failure paths still need fixes:
+
+- `get()` pins a frame before validating its page type. If validation throws, the pin is not undone.
+- Eviction removes its candidate before write-back. If writing throws, the frame stays resident
+  but is missing from the eviction queue.
+
+`free(pageId)` releases a cached frame only. It does not mark the disk page invalid or prevent a
+later get of that ID. Callers must remove all tree links to the page before freeing it.
 
 ---
 

@@ -1,4 +1,4 @@
-﻿# 4. Tree deletion
+# 4. Tree deletion
 
 `delete(key)` removes a record. It returns true if the key existed, or false if it was missing.
 After a successful delete, the tree may combine or rebalance pages and shrink the root.
@@ -108,7 +108,8 @@ An empty tree keeps an empty leaf root.
 
 Merges and root collapse free pages through PageStore.
 The test store removes freed pages from its map.
-The current disk pager has no free-page reuse mechanism and is not connected to the tree.
+The file store uses `BufferPool`, which drops a freed page's cached frame without writing it back.
+It does not reclaim the disk page ID. The pager still appends new pages, so the file does not shrink.
 
 Deletion does not merge across different parents, provide rollback, or support concurrent
 modification. Descent stops after 64 levels to guard against cyclic child pointers.

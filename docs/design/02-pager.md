@@ -1,4 +1,4 @@
-﻿# 2. Disk pager
+# 2. Disk pager
 
 `Pager` reads and writes one file as fixed 4096-byte pages.
 It owns the file channel and translates page IDs into file offsets.
@@ -16,7 +16,8 @@ offset: 0          4096       8192       12288
 The pager reserves page 0 for metadata and page 1 for the root.
 New pages are appended. Freed pages are not reused yet.
 
-The pager is separate from the tree. A future buffer pool will connect it to `PageStore`.
+The tree reaches the pager through [BufferPool](03-buffer-pool.md), which implements `PageStore`.
+[Database](03-database.md) owns the tree, pool, and pager and coordinates opening and closing.
 
 ## Metadata layout
 
@@ -47,8 +48,9 @@ The expected file size is then `3 * 4096 = 12288` bytes.
 
 ## Opening a file
 
-For an empty file, the pager writes metadata and a zero-filled root page.
-The root still needs to be formatted by the layer above the pager.
+For a missing or empty file, the pager writes metadata and formats page 1 as an empty leaf.
+The tree can open this reserved root directly. Later pages from `allocate()` are zero-filled;
+`BufferPool.allocate(type)` formats those in memory.
 
 For an existing file, it reads metadata and checks the magic, supported version ceiling,
 and page size. It also rejects a file shorter than the page count claims.
@@ -83,8 +85,12 @@ callers must supply the intended page ID.
 `sync()` writes the in-memory metadata and calls `FileChannel.force(true)`.
 `close()` syncs first, then closes the channel. Calling close again after success does nothing.
 
-This is not crash-safe transaction support. A crash before sync can leave appended data pages
-that the stored metadata does not include. Copy-on-write durability is planned.
+`Pager.sync()` does not flush cached frames by itself. `Database.sync()` flushes the pool first,
+then calls the pager's sync.
+
+This is not crash-safe transaction support. A crash can leave partial page writes, mismatched
+parent and child pages, or appended pages missing from metadata. Later writes overwrite existing
+pages, so an earlier sync is not a recoverable snapshot. Copy-on-write durability is planned.
 
 ## Classes and limits
 
@@ -98,6 +104,6 @@ that the stored metadata does not include. Copy-on-write durability is planned.
 I/O failures are reported as `UncheckedIOException`.
 Read, write, allocate, and sync reject use after close; metadata getters still return their values.
 
-There is no page cache, disk free list, or connection to the tree yet.
+The page cache lives in `BufferPool`. There is still no disk free list.
 Error cleanup also needs work: failed opening can leave a channel open, and failed sync during
 close prevents the channel from being closed.
