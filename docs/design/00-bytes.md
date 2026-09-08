@@ -1,130 +1,84 @@
-# 0. Bytes
+﻿# 0. Byte helpers
 
-Not a milestone. It is the shared foundation both the page layer and the tree layer sit on, so it
-gets its own doc.
+`Bytes` provides the shared rules for comparing keys and storing numbers.
 
-## What it is
+## Key order
 
-Three things:
+Keys are byte arrays. Each byte is compared as a number from 0 to 255.
 
-1. Unsigned comparison of `byte[]`, which is the engine's only key ordering.
-2. LEB128 varints, used for the lengths inside a cell.
-3. Fixed 4-byte big-endian ints, used for a child page id inside an internal cell.
+```text
+7F sorts before 80
+[1, 2] sorts before [1, 2, 0]
+[] sorts before every nonempty key
+```
 
-Every method that touches a `ByteBuffer` uses absolute indexing, so a page's position and limit are
-never disturbed.
+If two keys begin with the same bytes, the shorter key comes first.
+The empty array is a valid key.
 
-## Why it is built this way
+The helpers can compare two arrays, or compare a key directly inside a buffer with an array.
+The second form lets page searches avoid copying stored keys.
 
-**Java bytes are signed.** A key is `byte[]`, and I need `0x80` to sort above `0x7F`. Comparing
-signed would put it below.
+## Variable-length integers
 
-**Lengths are usually small.** A key is normally a few bytes and a value a few hundred. A fixed
-2-byte length field would waste a byte on almost every cell. A varint spends one byte while the
-length is under 128, which is the common case.
+Key and value lengths use LEB128 variable-length integers, or **varints**.
+Small lengths take fewer bytes.
 
-**Page ids are not small and not variable.** A child pointer is always 4 bytes, so it does not need
-a varint. Big-endian keeps it consistent with the page header.
+Each byte holds seven bits of the number. Its top bit says whether another byte follows.
+The lowest seven-bit group is stored first.
 
-## Layout
-
-A varint holds seven payload bits per byte, low group first. The high bit is set on every byte
-except the last.
-
-| Value under | Bytes |
+| Value range | Bytes |
 |---|---|
-| 2^7 | 1 |
-| 2^14 | 2 |
-| 2^21 | 3 |
-| 2^28 | 4 |
-| anything larger | 5 |
+| 0 to 127 | 1 |
+| 128 to 16,383 | 2 |
+| 16,384 to 2,097,151 | 3 |
+| 2,097,152 to 268,435,455 | 4 |
+| 268,435,456 to 2,147,483,647 | 5 |
 
-A fixed int is always 4 bytes, most significant first, so byte order is the same as numeric order.
-
-## Example
-
-Three varints:
-
-```
-127   ->  7F              1 byte
-128   ->  80 01           2 bytes
-300   ->  AC 02           2 bytes
+```text
+127 -> 7F
+128 -> 80 01
+300 -> AC 02
 ```
 
-Working out 300: the low seven bits are `0101100` = `0x2C`. Set the high bit to say "more coming"
-and that is `0xAC`. Then `300 >>> 7` is 2, so `0x02` with the high bit clear ends it.
+For 300, the lowest seven bits are 44 (`2C`). Setting the top bit gives `AC`.
+The remaining value is 2, stored as `02`.
 
-Two fixed ints:
+The writer always uses the shortest encoding. For bytes written by this engine,
+`varIntSize(decodedValue)` therefore tells the cell reader where the next field starts.
+The reader does not fully validate arbitrary or noncanonical encodings.
 
-```
-encodeInt(0x01020304)  ->  01 02 03 04
-encodeInt(4096)        ->  00 00 10 00
-```
+## Example: cell lengths
 
-And a whole cell header, showing why the widths never need storing:
+A cell with a 300-byte key and a 5-byte value uses 308 bytes.
+Here it starts at decimal offset 3700, so it fits inside a 4096-byte page.
 
-```
-4080:  AC 02        keyLength = 300,  varIntSize(300) = 2  ->  next field at 4082
-4082:  05           valueLength = 5,  varIntSize(5)   = 1  ->  key starts at 4083
-4083:  ...          300 key bytes
-4383:  ...          5 value bytes
-```
+| Decimal offset | Hex bytes | Meaning |
+|---|---|---|
+| 3700 | AC 02 | Key length: 300 |
+| 3702 | 05 | Value length: 5 |
+| 3703–4002 | Key bytes | 300 bytes |
+| 4003–4007 | Value bytes | 5 bytes |
 
-## How it works
+## Fixed-width integers
 
-### Unsigned comparison
+Child page IDs use four bytes in big-endian order: the most significant byte comes first.
 
-```
-0x80  vs  0x7F      signed:   -128 < 127     wrong
-                    unsigned:  128 > 127     right
-```
-
-A prefix sorts before the longer array:
-
-```
-{1, 2}  vs  {1, 2, 0}      ->  {1, 2} first
-{}      vs  {0}            ->  {} first
+```text
+encodeInt(0x01020304) -> 01 02 03 04
+encodeInt(4096)       -> 00 00 10 00
 ```
 
-The empty array is a real key, and it is the smallest key there is. The tree relies on that: an
-internal page keeps its leftmost child under an empty key so it always lands in slot 0.
+Encoding and decoding preserve all 32 bits, including negative Java `int` values.
+This does not mean the pager accepts negative page IDs.
 
-There are two forms:
+Buffer operations use absolute offsets. They do not change the caller's position or limit.
 
-```
-compare(byte[] a, byte[] b)
-compare(ByteBuffer buf, int index, int length, byte[] other)
-```
+## Limits
 
-The second exists so `binarySearch` can compare a stored key in place. A probe copies nothing out
-of the page.
-
-### The canonical property
-
-This is the part that matters. The encoding is canonical, so `varIntSize(decodedValue)` gives back
-the width the value was written in.
-
-That is why a cell does not need a field describing how wide its length fields are. Read a length,
-ask how wide it was, step forward. Nothing extra is spent.
-
-### Whole-range round trip
-
-`decodeInt` returns the same 32 bits `encodeInt` was given, including values that come back as a
-negative int. Page ids are unsigned carried in a signed `int`, so `0xFFFFFFFF` has to survive.
-
-## Limits and errors
-
-| | |
+| Situation | Behavior |
 |---|---|
-| Longest varint | 5 bytes |
-| Negative value passed to a varint method | `IllegalArgumentException` — lengths are never negative |
-| Varint with no terminating byte in 5 | `IllegalStateException` |
-| Varint that overflows a signed int | `IllegalStateException` |
-| `decodeInt` given other than 4 bytes | `IllegalArgumentException` |
-
-## What is missing
-
-| Missing | What it costs |
-|---|---|
-| Signed varints (zigzag) | Nothing yet. Only lengths are encoded, and they are never negative |
-| Varints longer than 32 bits | An `lsn` will be 8 bytes when milestone 6 needs it, written as a fixed field rather than a varint |
+| Negative varint input | IllegalArgumentException |
+| No terminating byte within five bytes | IllegalStateException |
+| Decoded varint produces a negative int | IllegalStateException |
+| Fixed-int input is not exactly four bytes | IllegalArgumentException |
+| Signed or 64-bit varints | Not implemented |
